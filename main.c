@@ -125,7 +125,7 @@ char** query_input(int MAX_INPUT) {
     char* input_str = malloc (MAX_INPUT);
 
     printf ("shell> ");
-    fgets (input_str, MAX_INPUT, stdin);  // get and store input from user   todo: other method that doesn't use MAX_INPUT
+    fgets (input_str, MAX_INPUT, stdin);  // get and store input from user   todo: other method that doesn't use MAX_INPUT : https://gist.github.com/L-Applin/abf22df6fd616bc2b3287a12a377d49d?fbclid=IwAR08xlMZl4GMizktOq3_eKDaAQbyXcuE_ePhV_gIwU_dTzcRRcuHJ7lfzww
     input_str[strcspn(input_str, "\n")] = 0;  // crop to first new-line    todo: \r ??  https://stackoverflow.com/a/28462221/9768291
 
     /* Splitting the input string. */
@@ -164,6 +164,8 @@ int main (void) {
             run_shell(args);
             if(DEBUG != 0) printf("done running shell on one command\n");
         }
+
+        free(args);  // todo: necessary ?
     }
 
     /* We're all done here. See you! */
