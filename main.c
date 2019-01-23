@@ -59,10 +59,12 @@ char** split_str (const char* str, const char delim[]) {
     if (token == NULL) {
         if(DEBUG != 0) printf("Bug extracting first word of split\n");
         free(result);
+        free(copied_input);
         return NULL;
     } else if ((result[0] = strdup (token)) == 0) {  // OOM
         if(DEBUG != 0) printf("Bug allocating first word of split\n");
         free(result);
+        free(copied_input);
         return NULL;
     }
 
@@ -76,6 +78,7 @@ char** split_str (const char* str, const char delim[]) {
                 free(result[tmp]);
             }
             free(result);
+            free(copied_input);
             return NULL;
         }
     }
@@ -129,14 +132,12 @@ char** query_input(int MAX_INPUT) {
     if ((args = split_str (input_str, " ")) == 0) {
         if(DEBUG != 0) printf("error in split_str function: querying new command\n");
         free(input_str);
-        query_input(MAX_INPUT);
+        return query_input(MAX_INPUT);
     } else {
         if(DEBUG != 0) printf("split_str function finished\n");
         free(input_str);
         return args;
     }
-
-    return NULL;  // shouldn't happen: there just because of compiler warning
 }
 
 int main (void)
