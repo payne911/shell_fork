@@ -17,8 +17,6 @@ problèmes connus:
 #include <sys/wait.h>
 
 
-//#define MAX_INPUT = 250
-
 
 /*
  * The "DEBUG" value is used to print trace of the flow of execution.
@@ -90,6 +88,7 @@ char** split_str (const char* str, const char delim[]) {
 }
 
 void run_shell(char** args) {
+    /// Does the forking and executes the given command.
 
     /* Forking. */
     int status;  // todo: see https://www.gnu.org/software/libc/manual/html_node/Process-Creation-Example.html   ??
@@ -119,12 +118,14 @@ void run_shell(char** args) {
 }
 
 char** query_input(int MAX_INPUT) {
+    /// Asks for a command until a valid one is given. Ignores anything beyond first '\n'.
+    /// Calls the function that splits the command and returns the resulting array.
 
     /* Allocating the input string. */
     char* input_str = malloc (MAX_INPUT);
 
     printf ("shell> ");
-    fgets (input_str, MAX_INPUT, stdin);  // get and store input from user
+    fgets (input_str, MAX_INPUT, stdin);  // get and store input from user   todo: other method that doesn't use MAX_INPUT
     input_str[strcspn(input_str, "\n")] = 0;  // crop to first new-line    todo: \r ??  https://stackoverflow.com/a/28462221/9768291
 
     /* Splitting the input string. */
@@ -140,14 +141,14 @@ char** query_input(int MAX_INPUT) {
     }
 }
 
-int main (void)
-{
-    fprintf (stdout, "%% ");
+int main (void) {
+    /// Instanciates the main shell and queries the commands. Type "eof" to exit.
 
+    fprintf (stdout, "%% ");
     /* ¡REMPLIR-ICI! : Lire les commandes de l'utilisateur et les exécuter. */
 
     int running = 0;
-    int MAX_INPUT = 250;
+    int MAX_INPUT = 250;  // todo: ideally, to be removed
 
     while(running == 0) {
 
