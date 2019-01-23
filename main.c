@@ -17,13 +17,14 @@ problèmes connus:
 #include <sys/wait.h>
 
 
-
 /*
  * The "DEBUG" value is used to print trace of the flow of execution.
  * Any non-zero value will result in traces being printed.
  * Setting it to 0 will silence the debugging mode.
  */
 #define DEBUG 0
+
+
 
 size_t optimizer_cnt(const char *str) {
     /// Used to get an upper limit on the amount of words separated by a space in the input string.
