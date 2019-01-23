@@ -81,10 +81,10 @@ char** split_str (const char* str, const char delim[]) {
             return NULL;
         }
     }
-    result[++tmp] = NULL;  // must end with NULL
+
+    result[++tmp] = NULL;  /* Must end with NULL */
 
     free(copied_input);
-
     return result;
 }
 
@@ -98,11 +98,10 @@ void run_shell(char** args) {
 
     if (pid < 0) {
         fprintf(stderr, "fork failed");
+
     } else if (pid == 0) {  // child
-
-        if(DEBUG != 0) printf("Child executing the command.\n");
-
         /* Executing the commands. */
+        if(DEBUG != 0) printf("Child executing the command.\n");
         execvp(args[0], args);
 
         /* Child process failed. */
