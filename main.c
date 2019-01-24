@@ -106,7 +106,7 @@ void run_shell(char** args) {
 
         /* Child process failed. */
         if(DEBUG != 0) printf("execvp didn't finish properly: running exit on child process\n");
-        exit(-1);
+        exit(-1);  // todo: free variables?
 
 
     } else {  // back in parent
@@ -160,9 +160,13 @@ int main (void) {
         char** args = query_and_split_input();
 
         /* Executing the commands. */
-        if(strcmp(args[0], "eof") == 0) {  // home-made "exit" command
+        if (args == NULL) {  // error while reading input
             running = 1;
-            free(args);  // todo: necessary ?
+            if(DEBUG != 0) printf("error while reading line: aborting shell\n");
+        } else if (strcmp(args[0], "eof") == 0) {  // home-made "exit" command
+            running = 1;
+            // todo: free the sub-arrays (args[x])
+            free(args);
             if(DEBUG != 0) printf("aborting shell\n");
         } else {
             if(DEBUG != 0) printf("shell processing new command\n");
