@@ -22,7 +22,7 @@ problèmes connus:
  * Any non-zero value will result in traces being printed.
  * Setting it to 0 will silence the debugging mode.
  */
-#define DEBUG 1
+#define DEBUG 0
 
 
 
