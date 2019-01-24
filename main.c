@@ -117,7 +117,7 @@ void run_shell(char** args) {
     }
 }
 
-char** query_and_split_input(int MAX_INPUT) {
+char** query_and_split_input() {
     /// Asks for a command until a valid one is given. Ignores anything beyond first '\n'.
     /// Calls the function that splits the command and returns the resulting array.
 
@@ -138,7 +138,7 @@ char** query_and_split_input(int MAX_INPUT) {
     if ((args = split_str (input_str, " ")) == 0) {
         if(DEBUG != 0) printf("error in split_str function: querying new command\n");
         free(input_str);
-        return query_and_split_input(MAX_INPUT);
+        return query_and_split_input();
     } else {
         if(DEBUG != 0) printf("split_str function finished\n");
         free(input_str);
@@ -153,12 +153,11 @@ int main (void) {
     /* ¡REMPLIR-ICI! : Lire les commandes de l'utilisateur et les exécuter. */
 
     int running = 0;
-    int MAX_INPUT = 250;  // todo: ideally, to be removed
 
     while(running == 0) {
 
         /* Ask for a command. */
-        char** args = query_and_split_input(MAX_INPUT);
+        char** args = query_and_split_input();
 
         /* Executing the commands. */
         if(strcmp(args[0], "eof") == 0) {  // home-made "exit" command
