@@ -22,7 +22,7 @@ problèmes connus:
  * Any non-zero value will result in traces being printed.
  * Setting it to 0 will silence the debugging mode.
  */
-#define DEBUG 0
+#define DEBUG 1
 
 
 
@@ -117,15 +117,20 @@ void run_shell(char** args) {
     }
 }
 
-char** query_input(int MAX_INPUT) {
+char** query_and_split_input(int MAX_INPUT) {
     /// Asks for a command until a valid one is given. Ignores anything beyond first '\n'.
     /// Calls the function that splits the command and returns the resulting array.
 
-    /* Allocating the input string. */
-    char* input_str = malloc (MAX_INPUT);
-
+    /* Prompting for command. */
     printf ("shell> ");
-    fgets (input_str, MAX_INPUT, stdin);  // get and store input from user   todo: other method that doesn't use MAX_INPUT : https://gist.github.com/L-Applin/abf22df6fd616bc2b3287a12a377d49d?fbclid=IwAR08xlMZl4GMizktOq3_eKDaAQbyXcuE_ePhV_gIwU_dTzcRRcuHJ7lfzww
+
+    char* input_str = NULL;
+    size_t buffer_size;
+    if (getline(&input_str, &buffer_size, stdin) == -1) {
+        if(DEBUG != 0) printf("error while trying to read line\n");
+        //free(input_str);  // todo: how to know if malloc'd ?
+        return NULL;
+    }
     input_str[strcspn(input_str, "\n")] = 0;  // crop to first new-line    todo: \r ??  https://stackoverflow.com/a/28462221/9768291
 
     /* Splitting the input string. */
@@ -133,7 +138,7 @@ char** query_input(int MAX_INPUT) {
     if ((args = split_str (input_str, " ")) == 0) {
         if(DEBUG != 0) printf("error in split_str function: querying new command\n");
         free(input_str);
-        return query_input(MAX_INPUT);
+        return query_and_split_input(MAX_INPUT);
     } else {
         if(DEBUG != 0) printf("split_str function finished\n");
         free(input_str);
@@ -153,19 +158,18 @@ int main (void) {
     while(running == 0) {
 
         /* Ask for a command. */
-        char** args = query_input(MAX_INPUT);
+        char** args = query_and_split_input(MAX_INPUT);
 
         /* Executing the commands. */
         if(strcmp(args[0], "eof") == 0) {  // home-made "exit" command
             running = 1;
+            free(args);  // todo: necessary ?
             if(DEBUG != 0) printf("aborting shell\n");
         } else {
             if(DEBUG != 0) printf("shell processing new command\n");
             run_shell(args);
             if(DEBUG != 0) printf("done running shell on one command\n");
         }
-
-        free(args);  // todo: necessary ?
     }
 
     /* We're all done here. See you! */
