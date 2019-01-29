@@ -28,13 +28,15 @@ problèmes connus:
  * Any non-zero value will result in traces being printed.
  * Setting it to 0 will silence the debugging mode.
  */
-#define DEBUG 0
+#define DEBUG 1
 
 
 typedef struct split_line {
     int size;           // size of the array
     char** content;     // array of words
 } split_line;
+
+int count_words(char**);
 
 
 
@@ -101,6 +103,56 @@ char** split_str (const char* str, const char delim[]) {
 }
 
 
+/**
+ * run a command line
+ * @param command
+ * @return
+ */
+int run_command(command cmd){
+//    bool success = cmd.cmd_name[0] == SUCCESS;
+//    printf("running : %s (%s)\n", cmd.cmd_name, success?"SUCCESS":"FAIL");
+//    printf("args : %s");
+//    return success;
+
+    if(DEBUG != 0) {
+        printf("in debug");
+        int tmp = count_words(cmd.cmd);
+        printf("count is %d\n", tmp);
+        while(tmp-- != 0) {
+            printf("run_cmd %d : %s\n", tmp, cmd.cmd[tmp]);
+        }
+    }
+
+    /* Forking. */
+    int status;  // todo: see https://www.gnu.org/software/libc/manual/html_node/Process-Creation-Example.html   ??
+    pid_t    pid;
+    pid = fork();
+
+
+    if (pid < 0) {
+        fprintf(stderr, "fork failed");
+
+    } else if (pid == 0) {  // child
+        /* Executing the commands. */
+        if(DEBUG != 0) printf("Child executing the command.\n");
+        execvp(cmd.cmd[0], cmd.cmd);
+
+        /* Child process failed. */
+        if(DEBUG != 0) printf("execvp didn't finish properly: running exit on child process\n");
+        exit(-1);  // todo: free variables?
+
+
+    } else {  // back in parent
+        wait(NULL);  // wait for child to finish        todo: waitpid() ???
+
+        //free(args);  todo: now necessary?
+        if(DEBUG != 0) printf("Terminating parent of the child.\n");
+    }
+
+    return true;
+}
+
+
 void run_shell(Expression* ast, split_line* sl, char** args) {
     /// Does the forking and executes the given command.
 
@@ -153,18 +205,6 @@ split_line* form_split_line(char** args, int wordc) {
     return sl;
 }
 
-/**
- * run a command line
- * @param command
- * @return
- */
-int run_command(command cmd){
-    bool success = cmd.cmd_name[0] == SUCCESS;
-    printf("running : %s (%s)\n", cmd.cmd_name, success?"SUCCESS":"FAIL");
-    printf("args : %s");
-    return success;
-}
-
 
 char** query_and_split_input() {
     /// Asks for a command until a valid one is given. Ignores anything beyond first '\n'.
@@ -203,7 +243,7 @@ char** query_and_split_input() {
  * @param end_index
  * @return
  */
-Expression * parse_line (split_line* line, int start_index, int end_index){
+Expression* parse_line (split_line* line, int start_index, int end_index){
 
     //printf("parsing line from %d to %d\n", start_index, end_index);
 
@@ -369,6 +409,10 @@ int main (void) {
             int count = count_words(args);
             split_line* line = form_split_line(args, count);  // todo: NULL returned
             Expression* ast = parse_line(line, 0, line->size - 1);
+
+//            if(DEBUG != 0) printf("ast expression is formed\n");
+//            eval(ast);
+//            if(DEBUG != 0) printf("exited eval\n");
 
             run_shell(ast, line, args);
 
