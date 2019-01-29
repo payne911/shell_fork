@@ -18,6 +18,9 @@ typedef struct split_line {
 
 split_line* split_str       (char* str, const char delim[]);
 Expression* parse_line      (split_line* line, int start_index, int end_index);
+
+
+
 size_t optimizer_cnt (const char *str) {
     /// Used to get an upper limit on the amount of words separated by a space in the input string.
 
@@ -40,7 +43,7 @@ size_t optimizer_cnt (const char *str) {
  * @param delim
  * @return
  */
-split_line * split_str (char* str, const char delim[]) {
+split_line* split_str (char* str, const char delim[]) {
     /// Returns a list of pointers to strings that came from splitting the input.
     /// Returns NULL in case of error.
 
@@ -308,7 +311,7 @@ int main() {
             continue;
         }
         Expression* ast = parse_line(line, 0, line->size - 1);
-        __debug_print(ast, 0);
+        //__debug_print(ast, 0);
 
         // eval(ast);
 

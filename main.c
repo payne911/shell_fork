@@ -15,7 +15,13 @@ problèmes connus:
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <stdbool.h>
 
+
+/*
+ * Abstract Syntax Tree.
+ */
+#include "expression.h"
 
 /*
  * The "DEBUG" value is used to print trace of the flow of execution.
@@ -23,6 +29,12 @@ problèmes connus:
  * Setting it to 0 will silence the debugging mode.
  */
 #define DEBUG 0
+
+
+typedef struct split_line {
+    int size;           // size of the array
+    char** content;     // array of words
+} split_line;
 
 
 
@@ -88,7 +100,8 @@ char** split_str (const char* str, const char delim[]) {
     return result;
 }
 
-void run_shell(char** args) {
+
+void run_shell(Expression* ast, split_line* sl, char** args) {
     /// Does the forking and executes the given command.
 
     /* Forking. */
@@ -116,6 +129,42 @@ void run_shell(char** args) {
         if(DEBUG != 0) printf("Terminating parent of the child.\n");
     }
 }
+
+
+int count_words(char** tab) {
+    int tmp = -1;
+
+    while(true) {
+        tmp++;
+        if(tab[tmp] == NULL)
+            break;
+    }
+
+    if(DEBUG != 0) printf("number of words in input string: %d\n", tmp);
+
+    return tmp;
+}
+
+
+split_line* form_split_line(char** args, int wordc) {
+    split_line* sl = malloc(sizeof(split_line));  // todo: OOM
+    sl->content = args;
+    sl->size = wordc;
+    return sl;
+}
+
+/**
+ * run a command line
+ * @param command
+ * @return
+ */
+int run_command(command cmd){
+    bool success = cmd.cmd_name[0] == SUCCESS;
+    printf("running : %s (%s)\n", cmd.cmd_name, success?"SUCCESS":"FAIL");
+    printf("args : %s");
+    return success;
+}
+
 
 char** query_and_split_input() {
     /// Asks for a command until a valid one is given. Ignores anything beyond first '\n'.
@@ -146,31 +195,186 @@ char** query_and_split_input() {
     }
 }
 
+/**
+ * from a list of words, parse it to create a abstract syntax tree
+ *
+ * @param line
+ * @param start_index
+ * @param end_index
+ * @return
+ */
+Expression * parse_line (split_line* line, int start_index, int end_index){
+
+    //printf("parsing line from %d to %d\n", start_index, end_index);
+
+    int if_count = 0;
+    int do_count = 0;
+    int done_count = 0;
+
+    // look for the root of the AST : either the first if statement,
+    // or the first logical operator outside an if statement
+    for (int i = start_index; i < end_index; ++i) {
+
+        char* current = line->content[i];
+
+        if (strncmp(current, IF_TOKEN, 2) == 0){
+            if_count++;
+        }
+
+        if (strncmp(current, DO_TOKEN, 2) == 0 && strncmp(current, DONE_TOKEN, 4) != 0){
+            do_count++;
+        }
+
+        if (strncmp(current, DONE_TOKEN, 4) == 0){
+            done_count++;
+        }
+
+        // outside of an if statement implies if_count == done_count
+
+        // the 'and' token at 'i' is the root
+        if (strncmp(current, AND_TOKEN, 3) == 0 && if_count == done_count){
+            //printf("the \'AND\' token at %d is the root\n", i);
+            Expression* left = parse_line(line, start_index, i - 1);
+            if (left == NULL){
+                return NULL;
+            }
+            Expression* right = parse_line(line, i+1, end_index);
+            if (right == NULL){
+                destroy_expression(left);
+                return NULL;
+            } else {
+                return create_exp(AND_EXPRESSION, left, right);
+            }
+        }
+
+        // the 'or' token at 'i' is the root
+        if (strncmp(current, OR_TOKEN, 2) == 0 && if_count == done_count){
+            //printf("the \'OR\' token at %d is the root\n", i);
+            Expression* left = parse_line(line, start_index, i - 1);
+            if (left == NULL){
+                return NULL;
+            }
+            Expression* right = parse_line(line, i+1, end_index);
+            if (right == NULL){
+                destroy_expression(left);
+                return NULL;
+            } else {
+                return create_exp(OR_EXPRESSION, left, right);
+            }
+
+        }
+
+    }
+
+    // error if statement
+    if ((if_count != 0 || do_count != 0 || done_count != 0) && ((if_count != do_count) && (if_count != done_count))){
+        printf("error in parsing if statement (if:%d, do:%d, done:%d)\n", if_count, do_count, done_count);
+        return NULL;
+    }
+
+    // here, the root of the AST is the 'if' statement at the beginning of the
+    if (if_count != 0 && if_count == done_count){
+        //printf("the \'IF\' token at %d is the root\n", start_index);
+
+        // inside an if statement.
+        // Need to separate the 'if' and 'do' statements
+        if_count = 0;
+        do_count = 0;
+        done_count = 0;
+
+        int do_index = INVALID_INDEX;
+        int done_index = INVALID_INDEX;
+        bool do_found = false;
+
+        for (int j = start_index; j < end_index; ++j){
+
+            char* current = line->content[j];
+
+            if (strncmp(current, IF_TOKEN, 2) == 0){
+                if_count++;
+            }
+
+            if (strncmp(current, DO_TOKEN, 2) == 0){
+                do_count++;
+            }
+
+            if (strncmp(current, DONE_TOKEN, 4) == 0){
+                done_count++;
+            }
+
+            if (if_count == do_count && !do_found){
+                do_index = j;
+                do_found = true;
+            }
+
+            if (if_count == done_count){
+                done_index = j;
+            }
+
+        }
+
+        //printf("if : %d, do : %d\n", start_index, do_index);
+
+        // if :
+        Expression * condition = parse_line(line, start_index + 1, do_index - 1);
+        if (condition==NULL){
+            return NULL;
+        }
+
+        Expression * statement = parse_line(line, do_index +1, done_index - 1);
+        if (statement == NULL){
+            destroy_expression(condition);
+            return NULL;
+        }
+
+        return create_exp(IF_EXPRESSION, condition, statement);
+    }
+
+    // there is no 'if' statement, nor logical operator. The commnad line is a single command.
+    if (if_count == 0){
+        return create_cmd(line->content, start_index, end_index);
+    }
+
+    // error in parsing
+    printf("error in parsing\n");
+    return NULL;
+
+}
+
 int main (void) {
     /// Instanciates the main shell and queries the commands. Type "eof" to exit.
 
     fprintf (stdout, "%% ");
     /* ¡REMPLIR-ICI! : Lire les commandes de l'utilisateur et les exécuter. */
 
-    int running = 0;
+    bool running = true;
 
-    while(running == 0) {
+    while(running) {
 
-        /* Ask for a command. */
+        /* Ask for an instruction. */
         char** args = query_and_split_input();
 
         /* Executing the commands. */
         if (args == NULL) {  // error while reading input
-            running = 1;
+            running = false;
             if(DEBUG != 0) printf("error while reading line: aborting shell\n");
         } else if (strcmp(args[0], "eof") == 0) {  // home-made "exit" command
-            running = 1;
+            running = false;
             // todo: free the sub-arrays (args[x])
             free(args);
             if(DEBUG != 0) printf("aborting shell\n");
         } else {
             if(DEBUG != 0) printf("shell processing new command\n");
-            run_shell(args);
+
+            int count = count_words(args);
+            split_line* line = form_split_line(args, count);  // todo: NULL returned
+            Expression* ast = parse_line(line, 0, line->size - 1);
+
+            run_shell(ast, line, args);
+
+            destroy_expression(ast);
+            free(line);
+
             if(DEBUG != 0) printf("done running shell on one command\n");
         }
     }
