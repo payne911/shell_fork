@@ -25,12 +25,12 @@
 
 
 typedef enum {COMMAND, IF_EXPRESSION, OR_EXPRESSION, AND_EXPRESSION} exp_type;
-typedef struct {
-    char*                   cmd_name;
-    char**                  args;
-    int                     arg_size;
-    char**                  options;
-    int                     options_size;
+typedef enum {BACKGROUND_TASK, REDIRECT_OUTPUT, NONE} deco;
+
+typedef struct command {
+    char**  cmd;
+    deco deco;
+    char * output_file;
 } command;
 
 /**
@@ -135,19 +135,8 @@ Expression * create_cmd (char** line, int start_index, int end_index){
         return NULL;
     }
 
-    e->node.cmd_expr->cmd_name = line[start_index];
-
-    // todo : split between arguments and options
-    if (size == 1){
-        e->node.cmd_expr->args = NULL;
-        e->node.cmd_expr->options = NULL;
-    } else {
-        for (int i = start_index; i <= end_index; ++i) {
-            printf("%s", line[i]);
-        }
-        printf("\n");
-    }
-
+    // todo : put char** in
+    
     return e;
 }
 
