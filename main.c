@@ -191,11 +191,11 @@ void run_shell(Expression* ast, split_line* sl, char** args) {
         if(DEBUG != 0) printf("Child executing the command.\n");
 
 //        /* Redirecting output. */
-//        const char* filePath = "../test_output_file.txt";  // todo: use proper path
+//        const char* filePath = "../test_output_file.txt";
 //        bool successfulWrite = writeOutputInFile(filePath);
 //        if(DEBUG != 0) printf("filepath for output: %s | successfulWrite: %s\n", filePath, successfulWrite==0?"false":"true");
 //        if (!successfulWrite) {
-//            printf("todo\n");  // todo: in case of error
+//            printf("todo\n");
 //        }
 
         /* Executing the commands. */
