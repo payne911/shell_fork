@@ -25,12 +25,11 @@
 
 
 typedef enum {COMMAND, IF_EXPRESSION, OR_EXPRESSION, AND_EXPRESSION} exp_type;
-typedef enum {BACKGROUND_TASK, REDIRECT_OUTPUT, NONE} deco;
 
 typedef struct command {
     char**  cmd;
-    deco deco;
-    char * output_file;
+    bool redirect_flag;   // contains '>'
+    char* output_file;
 } command;
 
 /**
@@ -62,7 +61,7 @@ int eval                    (Expression* exp);
 int or_eval                 (Expression* exp);
 int and_eval                (Expression* exp);
 Expression* create_cmd      (char** line, int start_index, int end_index);
-int run_command             (command cmd);
+int run_command             (command* cmd);
 
 
 /**
@@ -187,7 +186,7 @@ int eval (Expression* exp){
             } else {
                 return 0; // failure
             }
-        case COMMAND:            return run_command(*exp->node.cmd_expr);
+        case COMMAND:            return run_command(exp->node.cmd_expr);
         case OR_EXPRESSION:      return or_eval(exp);
         case AND_EXPRESSION:     return and_eval(exp);
         default:                 return -1;

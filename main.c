@@ -16,6 +16,7 @@ problèmes connus:
 #include <unistd.h>
 #include <sys/wait.h>
 #include <stdbool.h>
+#include <fcntl.h>
 
 
 /*
@@ -34,6 +35,7 @@ problèmes connus:
 typedef struct split_line {
     int size;           // size of the array
     char** content;     // array of words
+    bool thread_flag;   // if '&' at the end
 } split_line;
 
 int count_words(char**);
@@ -102,13 +104,20 @@ char** split_str (const char* str, const char delim[]) {
     return result;
 }
 
+bool writeOutputInFile(const char* output) {
+    int fileDescriptor = open(output, O_WRONLY | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+    if(fileDescriptor < 0) return false;            // in case of error
+    if(dup2(fileDescriptor,1) < 0) return false;    // in case of error
+    if(close(fileDescriptor) < 0) return false;     // in case of error
+    return true;
+}
 
 /**
  * run a command line
  * @param command
  * @return
  */
-int run_command(command cmd){
+int run_command(command* cmd){
 //    bool success = cmd.cmd_name[0] == SUCCESS;
 //    printf("running : %s (%s)\n", cmd.cmd_name, success?"SUCCESS":"FAIL");
 //    printf("args : %s");
@@ -116,16 +125,16 @@ int run_command(command cmd){
 
     if(DEBUG != 0) {
         printf("in debug");
-        int tmp = count_words(cmd.cmd);
+        int tmp = count_words(cmd->cmd);
         printf("count is %d\n", tmp);
         while(tmp-- != 0) {
-            printf("run_cmd %d : %s\n", tmp, cmd.cmd[tmp]);
+            printf("run_cmd %d : %s\n", tmp, cmd->cmd[tmp]);
         }
     }
 
     /* Forking. */
-    int status;  // todo: see https://www.gnu.org/software/libc/manual/html_node/Process-Creation-Example.html   ??
-    pid_t    pid;
+    int         status;  // todo: see https://www.gnu.org/software/libc/manual/html_node/Process-Creation-Example.html   ??
+    pid_t       pid;
     pid = fork();
 
 
@@ -133,9 +142,20 @@ int run_command(command cmd){
         fprintf(stderr, "fork failed");
 
     } else if (pid == 0) {  // child
-        /* Executing the commands. */
         if(DEBUG != 0) printf("Child executing the command.\n");
-        execvp(cmd.cmd[0], cmd.cmd);
+
+        /* Redirecting output. */
+        if(cmd->redirect_flag) {
+            const char* filePath = cmd->output_file;  // ex: "../test_output_file.txt";
+            bool successfulWrite = writeOutputInFile(filePath);
+            if(DEBUG != 0) printf("filepath for output: %s | successfulWrite: %s\n", filePath, successfulWrite==0?"false":"true");
+            if (!successfulWrite) {
+                exit(-2);  // todo: in case of error
+            }
+        }
+
+        /* Executing the commands. */
+        execvp(cmd->cmd[0], cmd->cmd);
 
         /* Child process failed. */
         if(DEBUG != 0) printf("execvp didn't finish properly: running exit on child process\n");
@@ -143,9 +163,12 @@ int run_command(command cmd){
 
 
     } else {  // back in parent
-        wait(NULL);  // wait for child to finish        todo: waitpid() ???
+        waitpid(-1, &status, 0);  // wait for child to finish
 
-        //free(args);  todo: now necessary?
+        if(WIFEXITED(status)) { if(DEBUG != 0) printf("OK: Child exited with exit status %d.\n", WEXITSTATUS(status)); }
+        else { if(DEBUG != 0) printf("ERROR: Child has not terminated correctly. Status is: %d\n", status); }
+
+//        free(args);
         if(DEBUG != 0) printf("Terminating parent of the child.\n");
     }
 
@@ -165,8 +188,17 @@ void run_shell(Expression* ast, split_line* sl, char** args) {
         fprintf(stderr, "fork failed");
 
     } else if (pid == 0) {  // child
-        /* Executing the commands. */
         if(DEBUG != 0) printf("Child executing the command.\n");
+
+//        /* Redirecting output. */
+//        const char* filePath = "../test_output_file.txt";  // todo: use proper path
+//        bool successfulWrite = writeOutputInFile(filePath);
+//        if(DEBUG != 0) printf("filepath for output: %s | successfulWrite: %s\n", filePath, successfulWrite==0?"false":"true");
+//        if (!successfulWrite) {
+//            printf("todo\n");  // todo: in case of error
+//        }
+
+        /* Executing the commands. */
         execvp(args[0], args);
 
         /* Child process failed. */
@@ -175,7 +207,10 @@ void run_shell(Expression* ast, split_line* sl, char** args) {
 
 
     } else {  // back in parent
-        wait(NULL);  // wait for child to finish        todo: waitpid() ???
+        waitpid(-1, &status, 0);  // wait for child to finish
+
+        if (WIFEXITED(status)) { if(DEBUG != 0) printf("OK: Child exited with exit status %d.\n", WEXITSTATUS(status)); }
+        else { if(DEBUG != 0) printf("ERROR: Child has not terminated correctly. Status is: %d\n", status); }
 
         free(args);
         if(DEBUG != 0) printf("Terminating parent of the child.\n");
@@ -197,14 +232,13 @@ int count_words(char** tab) {
     return tmp;
 }
 
-
 split_line* form_split_line(char** args, int wordc) {
     split_line* sl = malloc(sizeof(split_line));  // todo: OOM
     sl->content = args;
     sl->size = wordc;
+    sl->thread_flag = ((strcmp(args[wordc-1], "&")) == 0);
     return sl;
 }
-
 
 char** query_and_split_input() {
     /// Asks for a command until a valid one is given. Ignores anything beyond first '\n'.
@@ -410,13 +444,17 @@ int main (void) {
             split_line* line = form_split_line(args, count);  // todo: NULL returned
             Expression* ast = parse_line(line, 0, line->size - 1);
 
+            if(line->thread_flag) {
+                // todo: start thread
+            } else {
 //            if(DEBUG != 0) printf("ast expression is formed\n");
 //            eval(ast);
 //            if(DEBUG != 0) printf("exited eval\n");
 
-            run_shell(ast, line, args);
+                run_shell(ast, line, args);
+            }
 
-            destroy_expression(ast);
+            destroy_expression(ast);  // todo: ensure eval has it inside (remove from here)
             free(line);
 
             if(DEBUG != 0) printf("done running shell on one command\n");
