@@ -17,6 +17,7 @@ problèmes connus:
 #include <sys/wait.h>
 #include <stdbool.h>
 #include <fcntl.h>
+#include <pthread.h>
 
 
 /*
@@ -29,7 +30,7 @@ problèmes connus:
  * Any non-zero value will result in traces being printed.
  * Setting it to 0 will silence the debugging mode.
  */
-#define DEBUG 1
+#define DEBUG 0
 
 
 typedef struct split_line {
@@ -233,7 +234,8 @@ int count_words(char** tab) {
 }
 
 split_line* form_split_line(char** args, int wordc) {
-    split_line* sl = malloc(sizeof(split_line));  // todo: OOM
+    split_line* sl = malloc(sizeof(split_line));
+    if(sl == NULL) return NULL;  // OOM
     sl->content = args;
     sl->size = wordc;
     sl->thread_flag = ((strcmp(args[wordc-1], "&")) == 0);
@@ -415,6 +417,28 @@ Expression* parse_line (split_line* line, int start_index, int end_index){
 
 }
 
+
+#define NUM_THREADS 2
+
+/* create thread argument struct for thr_func() */
+typedef struct _thread_data_t {
+    Expression ast;
+    split_line line;
+} thread_data_t;
+
+/* thread function */
+void *thr_func(void *arg) {
+    thread_data_t *data = (thread_data_t *)arg;
+//    sleep(3);  todo: remove eventually
+//    for(int i = 0; i < data->line.size; i++) {
+//        printf("hello from thr_func, word is: %s\n", data->line.content[i]);
+//    }
+//    printf("hello from thr_func, word is: %s\n", data->line.content[data->line.size+1]);
+    run_shell(&data->ast, &data->line, data->line.content);
+    if(DEBUG != 0) printf("thread should have ran the command\n");
+    pthread_exit(NULL);
+}
+
 int main (void) {
     /// Instanciates the main shell and queries the commands. Type "eof" to exit.
 
@@ -441,11 +465,46 @@ int main (void) {
             if(DEBUG != 0) printf("shell processing new command\n");
 
             int count = count_words(args);
-            split_line* line = form_split_line(args, count);  // todo: NULL returned
+            split_line* line = form_split_line(args, count);
+            if(line == NULL) {  // in case an error occured: skip and ask new query
+                free(args);
+                continue;
+            }
+
             Expression* ast = parse_line(line, 0, line->size - 1);
 
             if(line->thread_flag) {
-                // todo: start thread
+                pthread_t cmd_thr;
+
+                /* Setting up the content of the thread. */
+                thread_data_t thr_data;
+                thr_data.ast = *ast;
+                thr_data.line = *line;
+
+                /* Executing the thread. */
+                int thr_err;
+                if ((thr_err = pthread_create(&cmd_thr, NULL, thr_func, &thr_data))) {
+                    fprintf(stderr, "error: pthread_create, rc: %d\n", thr_err);
+                    return EXIT_FAILURE;
+                }
+                if(DEBUG != 0) printf("thread has been created.\n");
+
+
+//                /* UN EXEMPLE todo: remove */
+//                pthread_t thr[NUM_THREADS];
+//                int i, rc;
+//                /* create a thread_data_t argument array */
+//                thread_data_t thr_data[NUM_THREADS];
+//
+//                /* create threads */
+//                for (i = 0; i < NUM_THREADS; ++i) {
+//                    thr_data[i].tid = i;
+//                    if ((rc = pthread_create(&thr[i], NULL, thr_func, &thr_data[i]))) {
+//                        fprintf(stderr, "error: pthread_create, rc: %d\n", rc);
+//                        return EXIT_FAILURE;
+//                    }
+//                }
+
             } else {
 //            if(DEBUG != 0) printf("ast expression is formed\n");
 //            eval(ast);
