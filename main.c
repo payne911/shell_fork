@@ -17,7 +17,7 @@ problèmes connus:
 #include <sys/wait.h>
 #include <stdbool.h>
 #include <fcntl.h>
-#include <pthread.h>
+#include <signal.h>
 
 
 /*
@@ -418,13 +418,17 @@ Expression* parse_line (split_line* line, int start_index, int end_index){
 }
 
 
-void sig_handler (int sig) {
+void zombie_handler(int sigNo) {
     int status;
     pid_t child_pid;
     while ((child_pid = waitpid(-1, &status, WNOHANG)) > 0) {
         /*...do something with exited child's status */
         printf("Reaped child pid %d | exit status: %d\n", child_pid, status);
     }
+}
+
+void ctrl_Z_handler(int sigNo) {
+    printf("Caught Ctrl-Z\n");
 }
 
 
@@ -437,8 +441,27 @@ int main (void) {
     bool running = true;
 
 
-    signal(SIGCHLD, sig_handler);  // todo, maybe: https://stackoverflow.com/a/7171836/9768291
-//    signal(SIGCHLD,SIG_IGN);  // todo, read: http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
+    /* To reap zombie child processes created by using '&'. */
+    struct sigaction zombie_reaper;  // todo, read: http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
+    zombie_reaper.sa_handler = &zombie_handler;
+    sigemptyset(&zombie_reaper.sa_mask);
+    zombie_reaper.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    if (sigaction(SIGCHLD, &zombie_reaper, NULL) == -1) {  // todo: error handling
+        perror(0);
+        printf("error within SIGCHLD signal thingy\n");
+        exit(1);
+    }
+
+    /* To treat Ctrl-Z (Bonus #2). */
+    struct sigaction bonus2_signal;  // todo, read: https://indradhanush.github.io/blog/writing-a-unix-shell-part-3/
+    bonus2_signal.sa_handler = &ctrl_Z_handler;
+    sigemptyset(&bonus2_signal.sa_mask);
+    bonus2_signal.sa_flags = SA_RESTART;  // todo: useful ?
+    if (sigaction(SIGTSTP, &bonus2_signal, NULL) == -1) {  // todo: error handling
+        perror(0);
+        printf("error within SIGTSTP signal thingy\n");
+        exit(1);
+    }
 
     while(running) {
 
