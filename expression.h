@@ -25,10 +25,11 @@
 
 
 typedef enum {COMMAND, IF_EXPRESSION, OR_EXPRESSION, AND_EXPRESSION} exp_type;
+static char *enumStrings[] = {"COMMAND", "IF_EXPRESSION", "OR_EXPRESSION", "AND_EXPRESSION"};
 
 typedef struct command {
     char**  cmd;
-    bool redirect_flag;   // contains '>'
+    bool redirect_flag;
     char* output_file;
 } command;
 
@@ -41,26 +42,20 @@ typedef struct Expression {
     union {
         command*                                        cmd_expr;
         struct {
-            struct Expression*      condition;
-            struct Expression*      statement;
-        }                                               if_expr;
-        struct {
-            struct Expression*      left_statement;
-            struct Expression*      right_statement;
-        }                                               or_expr;
-        struct {
-            struct Expression*      left_statement;
-            struct Expression*      right_statement;
-        }                                               and_expr;
+            struct Expression*      left;
+            struct Expression*      right;
+        }                                               cond_expr;
     } node;
 } Expression;
 
 
 Expression* create_exp      (exp_type type, Expression* first, Expression* second);
+Expression* create_cmd      (char** line, int start_index, int end_index);
+
 int eval                    (Expression* exp);
 int or_eval                 (Expression* exp);
 int and_eval                (Expression* exp);
-Expression* create_cmd      (char** line, int start_index, int end_index);
+void destroy_command        (command* cmd);
 int run_command             (command* cmd);
 
 
@@ -79,32 +74,11 @@ Expression * create_exp (exp_type type, Expression* first, Expression* second){
         return NULL;
     }
 
-    exp_type* type_pointer = malloc(sizeof(exp_type));
-    if (type_pointer == NULL){
-        perror("malloc error type_pointer");
-        free(e);
-        return NULL;
-    }
-
-    *type_pointer = type;
-    e->id = *type_pointer;
-
-    if (type == IF_EXPRESSION){
-        e->node.if_expr.condition = first;
-        e->node.if_expr.statement = second;
-    }
-
-    if (type == OR_EXPRESSION){
-        e->node.or_expr.left_statement = first;
-        e->node.or_expr.right_statement = second;
-    }
-
-    if (type == AND_EXPRESSION){
-        e->node.and_expr.left_statement = first;
-        e->node.and_expr.right_statement = second;
-    }
-
+    e->id = type;
+    e->node.cond_expr.left = first;
+    e->node.cond_expr.right = second;
     return e;
+
 }
 
 
@@ -112,8 +86,10 @@ Expression * create_exp (exp_type type, Expression* first, Expression* second){
  *
  * @param line
  * @return
+ * 
  */
 Expression * create_cmd (char** line, int start_index, int end_index){
+
 
     int size = end_index - start_index + 1;
     if (strncmp(line[start_index + size - 1], IF_SEP, 1) == 0){
@@ -125,6 +101,7 @@ Expression * create_cmd (char** line, int start_index, int end_index){
         perror("malloc error create_cmd");
         return NULL;
     }
+
     e->id = COMMAND;
 
     e->node.cmd_expr = malloc(sizeof(command));
@@ -134,7 +111,19 @@ Expression * create_cmd (char** line, int start_index, int end_index){
         return NULL;
     }
 
-    // todo : put char** in
+
+    e->node.cmd_expr->cmd = malloc(sizeof(char) * (size + 1));
+    if (e->node.cmd_expr->cmd == NULL){
+        free(e);
+        perror("malloc error create_cmd");
+        return NULL;
+    }
+
+    for(int i = 0; i < size; i++){
+        e->node.cmd_expr->cmd[i] = line[i + start_index];
+    }
+
+    e->node.cmd_expr->cmd[size] = NULL;
     
     return e;
 }
@@ -142,34 +131,30 @@ Expression * create_cmd (char** line, int start_index, int end_index){
 
 void destroy_expression (Expression* e){
 
+    printf("freeing %s\n", enumStrings[e->id]);
+
     if (e==NULL){
         free(e);
         return;
     }
 
     if (e->id == COMMAND){
-        free(e->node.cmd_expr);
+        destroy_command(e->node.cmd_expr);
     }
 
-    if (e->id == IF_EXPRESSION){
-        destroy_expression(e->node.if_expr.condition);
-        destroy_expression(e->node.if_expr.statement);
+    else {
+        destroy_expression(e->node.cond_expr.left);
+        destroy_expression(e->node.cond_expr.right);
     }
 
-    if (e->id == OR_EXPRESSION){
-        destroy_expression(e->node.or_expr.left_statement);
-        destroy_expression(e->node.or_expr.right_statement);
-    }
+    free(e);
 
-    if (e->id == AND_EXPRESSION){
-        destroy_expression(e->node.and_expr.left_statement);
-        destroy_expression(e->node.and_expr.right_statement);
-    }
+}
 
-    free(&e->id);
-    // free(&e->node);
-    // free(e);
 
+void destroy_command(command* cmd_expr){
+    free(cmd_expr->cmd);
+    free(cmd_expr);
 }
 
 /**
@@ -179,10 +164,11 @@ void destroy_expression (Expression* e){
  * @return if the evaluation succeeded or not
  */
 int eval (Expression* exp){
+    printf("evaluation : %s\n", enumStrings[exp->id]);
     switch (exp->id){
         case IF_EXPRESSION :
-            if (eval(exp->node.if_expr.condition)){
-                return eval(exp->node.if_expr.statement);
+            if (eval(exp->node.cond_expr.left)){
+                return eval(exp->node.cond_expr.right);
             } else {
                 return 0; // failure
             }
@@ -200,11 +186,11 @@ int eval (Expression* exp){
  * @return
  */
 int or_eval (Expression* exp){
-    int first_result = eval(exp->node.or_expr.left_statement);
+    int first_result = eval(exp->node.cond_expr.left);
     if (first_result){
         return first_result;
     } else {
-        return eval(exp->node.or_expr.right_statement);
+        return eval(exp->node.cond_expr.right);
     }
 }
 
@@ -215,13 +201,12 @@ int or_eval (Expression* exp){
  * @return
  */
 int and_eval (Expression* exp){
-    int first_result = eval(exp->node.and_expr.left_statement);
+    int first_result = eval(exp->node.cond_expr.left);
     if (first_result){
-        return eval(exp->node.or_expr.right_statement);
+        return eval(exp->node.cond_expr.right);
     } else {
         return false;
     }
-
 }
 
 #endif //TESTSHELL_EXPRESSION_H
