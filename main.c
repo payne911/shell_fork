@@ -177,19 +177,20 @@ int run_command(command* cmd){
 }
 
 
-void run_shell(Expression* ast, split_line* sl, char** args) {
+void run_shell(char** args) {
     /// Does the forking and executes the given command.
 
     /* Forking. */
     int status;  // todo: see https://www.gnu.org/software/libc/manual/html_node/Process-Creation-Example.html   ??
     pid_t    pid;
+    if(DEBUG != 0) printf("run_shell: just before fork.\n");
     pid = fork();
 
     if (pid < 0) {
         fprintf(stderr, "fork failed");
 
     } else if (pid == 0) {  // child
-        if(DEBUG != 0) printf("Child executing the command.\n");
+        if(DEBUG != 0) printf("Child executing the command.\n\n");
 
 //        /* Redirecting output. */
 //        const char* filePath = "../test_output_file.txt";
@@ -220,6 +221,7 @@ void run_shell(Expression* ast, split_line* sl, char** args) {
 
 
 int count_words(char** tab) {
+    /// Counts the amount of words in the split line (parsed from input by the user).
     int tmp = -1;
 
     while(true) {
@@ -227,8 +229,6 @@ int count_words(char** tab) {
         if(tab[tmp] == NULL)
             break;
     }
-
-    if(DEBUG != 0) printf("number of words in input string: %d\n", tmp);
 
     return tmp;
 }
@@ -238,7 +238,7 @@ split_line* form_split_line(char** args, int wordc) {
     if(sl == NULL) return NULL;  // OOM
     sl->content = args;
     sl->size = wordc;
-    sl->thread_flag = ((strcmp(args[wordc-1], "&")) == 0);
+    sl->thread_flag = ((strcmp(args[wordc-1], "&")) == 0); // find if there is a trailing '&'
     return sl;
 }
 
@@ -418,26 +418,15 @@ Expression* parse_line (split_line* line, int start_index, int end_index){
 }
 
 
-#define NUM_THREADS 2
-
-/* create thread argument struct for thr_func() */
-typedef struct _thread_data_t {
-    Expression ast;
-    split_line line;
-} thread_data_t;
-
-/* thread function */
-void *thr_func(void *arg) {
-    thread_data_t *data = (thread_data_t *)arg;
-//    sleep(3);  todo: remove eventually
-//    for(int i = 0; i < data->line.size; i++) {
-//        printf("hello from thr_func, word is: %s\n", data->line.content[i]);
-//    }
-//    printf("hello from thr_func, word is: %s\n", data->line.content[data->line.size+1]);
-    run_shell(&data->ast, &data->line, data->line.content);
-    if(DEBUG != 0) printf("thread should have ran the command\n");
-    pthread_exit(NULL);
+void sig_handler (int sig) {
+    int status;
+    pid_t child_pid;
+    while ((child_pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        /*...do something with exited child's status */
+        printf("Reaped child pid %d | exit status: %d\n", child_pid, status);
+    }
 }
+
 
 int main (void) {
     /// Instanciates the main shell and queries the commands. Type "eof" to exit.
@@ -446,6 +435,10 @@ int main (void) {
     /* ¡REMPLIR-ICI! : Lire les commandes de l'utilisateur et les exécuter. */
 
     bool running = true;
+
+
+    signal(SIGCHLD, sig_handler);  // todo, maybe: https://stackoverflow.com/a/7171836/9768291
+//    signal(SIGCHLD,SIG_IGN);  // todo, read: http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
 
     while(running) {
 
@@ -474,43 +467,42 @@ int main (void) {
             Expression* ast = parse_line(line, 0, line->size - 1);
 
             if(line->thread_flag) {
-                pthread_t cmd_thr;
 
-                /* Setting up the content of the thread. */
-                thread_data_t thr_data;
-                thr_data.ast = *ast;
-                thr_data.line = *line;
+                line->content[line->size-1] = NULL;  // to replace the trailing '&' from the command
 
-                /* Executing the thread. */
-                int thr_err;
-                if ((thr_err = pthread_create(&cmd_thr, NULL, thr_func, &thr_data))) {
-                    fprintf(stderr, "error: pthread_create, rc: %d\n", thr_err);
-                    return EXIT_FAILURE;
+                /* Forking. */
+                pid_t    pid;
+                if(DEBUG != 0) printf("SUB___shell: just before fork.\n");
+                pid = fork();
+
+                if (pid < 0) {
+                    fprintf(stderr, "SUB___fork failed");
+
+                } else if (pid == 0) {  // child
+                    if(DEBUG != 0) printf("SUB___Child executing the command.\n\n");
+                    sleep(3);  // todo: remove eventually (after tests)
+
+                    /* Executing the commands. */
+                    execvp(args[0], args);
+
+                    /* Child process failed. */
+                    if(DEBUG != 0) printf("SUB___execvp didn't finish properly: running exit on child process\n");
+                    exit(-1);  // todo: free variables?
+
+
+                } else {  // back in parent
+                    free(args);  // todo: what to do with this now?
+                    if(DEBUG != 0) printf("SUB___Terminating parent of the child.\n");
                 }
-                if(DEBUG != 0) printf("thread has been created.\n");
 
-
-//                /* UN EXEMPLE todo: remove */
-//                pthread_t thr[NUM_THREADS];
-//                int i, rc;
-//                /* create a thread_data_t argument array */
-//                thread_data_t thr_data[NUM_THREADS];
-//
-//                /* create threads */
-//                for (i = 0; i < NUM_THREADS; ++i) {
-//                    thr_data[i].tid = i;
-//                    if ((rc = pthread_create(&thr[i], NULL, thr_func, &thr_data[i]))) {
-//                        fprintf(stderr, "error: pthread_create, rc: %d\n", rc);
-//                        return EXIT_FAILURE;
-//                    }
-//                }
+                if(DEBUG != 0) printf("SUB___thread has been created.\n");
 
             } else {
 //            if(DEBUG != 0) printf("ast expression is formed\n");
 //            eval(ast);
 //            if(DEBUG != 0) printf("exited eval\n");
 
-                run_shell(ast, line, args);
+                run_shell(args);
             }
 
             destroy_expression(ast);  // todo: ensure eval has it inside (remove from here)
