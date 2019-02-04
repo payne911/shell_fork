@@ -134,7 +134,7 @@ int run_command(command* cmd){
     }
 
     /* Forking. */
-    int         status;  // todo: see https://www.gnu.org/software/libc/manual/html_node/Process-Creation-Example.html   ??
+    int         status;
     pid_t       pid;
     pid = fork();
 
@@ -147,7 +147,7 @@ int run_command(command* cmd){
 
         /* Redirecting output. */
         if(cmd->redirect_flag) {
-            const char* filePath = cmd->output_file;  // ex: "../test_output_file.txt";
+            const char* filePath = cmd->output_file;  // ex: "./test_output_file.txt";
             bool successfulWrite = writeOutputInFile(filePath);
             if(DEBUG != 0) printf("filepath for output: %s | successfulWrite: %s\n", filePath, successfulWrite==0?"false":"true");
             if (!successfulWrite) {
@@ -406,7 +406,7 @@ Expression* parse_line (split_line* line, int start_index, int end_index){
         return create_exp(IF_EXPRESSION, condition, statement);
     }
 
-    // there is no 'if' statement, nor logical operator. The commnad line is a single command.
+    // there is no 'if' statement, nor logical operator. The command line is a single command.
     if (if_count == 0){
         return create_cmd(line->content, start_index, end_index);
     }
@@ -506,7 +506,10 @@ int main (void) {
                     sleep(3);  // todo: remove eventually (after tests)
 
                     /* Executing the commands. */
-                    execvp(args[0], args);
+//                    execvp(args[0], args);
+                    if(DEBUG != 0) printf("SUB___ast expression is formed\n");
+                    eval(ast);
+                    if(DEBUG != 0) printf("SUB___exited eval\n");
 
                     /* Child process failed. */
                     if(DEBUG != 0) printf("SUB___execvp didn't finish properly: running exit on child process\n");
@@ -521,11 +524,11 @@ int main (void) {
                 if(DEBUG != 0) printf("SUB___thread has been created.\n");
 
             } else {
-//            if(DEBUG != 0) printf("ast expression is formed\n");
-//            eval(ast);
-//            if(DEBUG != 0) printf("exited eval\n");
+                if(DEBUG != 0) printf("ast expression is formed\n");
+                eval(ast);
+                if(DEBUG != 0) printf("exited eval\n");
 
-                run_shell(args);
+//                run_shell(args);
             }
 
             destroy_expression(ast);  // todo: ensure eval has it inside (remove from here)
