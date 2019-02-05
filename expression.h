@@ -15,6 +15,7 @@
 #define OR_TOKEN "||"
 #define AND_TOKEN "&&"
 #define IF_SEP ";"
+#define REDIRECT_SEPERATOR ">"
 
 #define FAIL 'F'
 #define SUCCESS 'S'
@@ -30,6 +31,7 @@ static char *enumStrings[] = {"COMMAND", "IF_EXPRESSION", "OR_EXPRESSION", "AND_
 typedef struct command {
     char**  cmd;
     bool redirect_flag;
+    bool background_flag;
     char* output_file;
 } command;
 
@@ -112,26 +114,90 @@ Expression * create_cmd (char** line, int start_index, int end_index){
     }
 
 
-    e->node.cmd_expr->cmd = malloc(sizeof(char) * (size + 1));
+    e->node.cmd_expr->cmd = malloc(sizeof(char*) * (size + 1));
     if (e->node.cmd_expr->cmd == NULL){
+        free(e->node.cmd_expr);
         free(e);
         perror("malloc error create_cmd");
         return NULL;
     }
 
-    for(int i = 0; i < size; i++){
-        e->node.cmd_expr->cmd[i] = line[i + start_index];
+    int i;
+    bool redir = false;
+    for(i = 0; i < size; i++){
+        if (redir){
+            char * next = line[i + start_index + 1];
+            if (strncmp(line[i+start_index], REDIRECT_SEPERATOR, 1) == 0 && 
+                (next == NULL 
+                || strncmp (next, OR_TOKEN, 2)  == 0
+                || strncmp (next, AND_TOKEN, 2) == 0
+                || strncmp (next, DO_TOKEN, 2)       == 0
+                || strncmp (next, IF_TOKEN, 2)       == 0
+                || strncmp (next, DONE_TOKEN, 4)     == 0
+                || next == IF_SEP
+                || next == REDIRECT_SEPERATOR)){
+                    printf("no output file. Redirect kept on %s", e->node.cmd_expr->output_file);
+                    return e;
+            }
+
+            else {
+                // there is a word after
+                e->node.cmd_expr->output_file=next;
+            }
+        }       
+
+        else if (strncmp(line[i+start_index], REDIRECT_SEPERATOR, 1) == 0){
+            redir = true;
+            printf("redirect found [%i]\n", i);
+            char * next = line[i + start_index + 1];
+            
+            // if next word is NULL or a token -> no redirect file
+            if (next == NULL 
+                || strncmp (next, OR_TOKEN, 2)  == 0
+                || strncmp (next, AND_TOKEN, 2) == 0
+                || strncmp (next, DO_TOKEN, 2)       == 0
+                || strncmp (next, IF_TOKEN, 2)       == 0
+                || strncmp (next, DONE_TOKEN, 4)     == 0
+                || next == IF_SEP
+                || next == REDIRECT_SEPERATOR){
+                    printf("no output file. Redirect on %s ignored\n", line[start_index]);
+                    printf("reallocating : %i\n", i + 1);
+                    char ** tmp = realloc(e->node.cmd_expr->cmd, (sizeof(char*) * (i + 1)));
+                    if (tmp == NULL){
+                        free(tmp);
+                        free(e->node.cmd_expr->cmd);
+                    }
+                    e->node.cmd_expr->cmd = tmp;
+                    e->node.cmd_expr->cmd[i+1] = NULL;
+                    e->node.cmd_expr->redirect_flag=false;
+                    return e;
+                }
+               
+                // looks like 'command > my_file.txt'
+                e->node.cmd_expr->redirect_flag=true;
+                e->node.cmd_expr->output_file=line[i+start_index+1];
+                printf("reallocating : %i\n", i + 1);
+                char ** tmp = realloc(e->node.cmd_expr->cmd, (sizeof(char*) * (i + 1)));
+                    if (tmp == NULL){
+                        free(tmp);
+                        free(e->node.cmd_expr->cmd);
+                    }
+                e->node.cmd_expr->cmd[i+1] = NULL;                
+            }
+
+        else {
+            e->node.cmd_expr->cmd[i] = line[i + start_index];
+        }
     }
 
     e->node.cmd_expr->cmd[size] = NULL;
-    
     return e;
 }
 
 
 void destroy_expression (Expression* e){
 
-    printf("freeing %s\n", enumStrings[e->id]);
+    printf("freeing %s\n\n", enumStrings[e->id]);
 
     if (e==NULL){
         free(e);
