@@ -35,14 +35,6 @@ problèmes connus:
 #define FAILED_EXECVP 42
 
 
-typedef struct split_line {
-    int size;           // size of the array
-    char** content;     // array of words
-    bool thread_flag;   // if '&' at the end
-} split_line;
-
-
-
 
 size_t optimizer_cnt(const char *str) {
     /// Returns min(1, #words).
@@ -195,183 +187,6 @@ int run_command(command* cmd){
 }
 
 
-/**
- * from a list of words, parse it to create a abstract syntax tree
- *
- * @param line
- * @param start_index
- * @param end_index
- * @return
- */
-Expression * parse_line (split_line* line, int start_index, int end_index) {
-
-    //printf("parsing line from %d to %d\n", start_index, end_index);
-
-    int if_count = 0;
-    int do_count = 0;
-    int done_count = 0;
-
-    // look for the root of the AST : either the first if statement,
-    // or the first logical operator outside an if statement
-    for (int i = start_index; i < end_index; ++i) {
-
-        char* current = line->content[i];
-
-        // counting if
-        if (strncmp(current, IF_TOKEN, 2) == 0){
-            if (i == start_index){
-                if_count++;
-            } else {
-                char* previous = line->content[i - 1];
-                if (strncmp(previous, IF_TOKEN, 2) == 0
-                    || strncmp(previous, DO_TOKEN, 2) == 0
-                    || strncmp(previous, AND_TOKEN, 2) == 0
-                    || strncmp(previous, OR_TOKEN, 2) == 0){
-                    if_count++;
-                }
-            }
-        }
-
-        // counting do
-        if (strncmp(current, DO_TOKEN, 2) == 0 && strncmp(current, DONE_TOKEN, 4) != 0){
-            // todo : check if it is a true 'do'
-            if (i != start_index && strncmp(line->content[i-1], IF_SEP, 1) == 0){
-                do_count++;
-            }
-        }
-
-
-        // counting done
-        if (strncmp(current, DONE_TOKEN, 4) == 0){
-            if (i != start_index && strncmp(line->content[i-1], IF_SEP, 1) == 0){
-                done_count++;
-            }
-        }
-
-        // outside of an if statement implies if_count == done_count
-
-        // the 'and' token at 'i' is the root
-        if (strncmp(current, AND_TOKEN, 3) == 0 && if_count == done_count){
-            //printf("the \'AND\' token at %d is the root\n", i);
-            Expression* left = parse_line(line, start_index, i - 1);
-            if (left == NULL){
-                return NULL;
-            }
-            Expression* right = parse_line(line, i+1, end_index);
-            if (right == NULL){
-                destroy_expression(left);
-                return NULL;
-            } else {
-                return create_exp(AND_EXPRESSION, left, right);
-            }
-        }
-
-        // the 'or' token at 'i' is the root
-        if (strncmp(current, OR_TOKEN, 2) == 0 && if_count == done_count){
-            //printf("the \'OR\' token at %d is the root\n", i);
-            Expression* left = parse_line(line, start_index, i - 1);
-            if (left == NULL){
-                return NULL;
-            }
-            Expression* right = parse_line(line, i+1, end_index);
-            if (right == NULL){
-                destroy_expression(left);
-                return NULL;
-            } else {
-                return create_exp(OR_EXPRESSION, left, right);
-            }
-
-        }
-
-    }
-
-    // error if statement
-    if ((if_count != 0 || do_count != 0 || done_count != 0) && ((if_count != do_count) && (if_count != done_count))){
-        printf("error in parsing if statement (if:%d, do:%d, done:%d)\n", if_count, do_count, done_count);
-        return NULL;
-    }
-
-    // here, the root of the AST is the 'if' statement at the beginning of the
-    if (if_count != 0 && if_count == done_count){
-        //printf("the \'IF\' token at %d is the root\n", start_index);
-
-        // inside an if statement.
-        // Need to separate the 'if' and 'do' statements
-        if_count = 0;
-        do_count = 0;
-        done_count = 0;
-
-        int do_index = INVALID_INDEX;
-        int done_index = INVALID_INDEX;
-        bool do_found = false;
-
-        for (int j = start_index; j < end_index; ++j){
-
-            char* current = line->content[j];
-
-            if (strncmp(current, IF_TOKEN, 2) == 0){
-                if_count++;
-            }
-
-            if (strncmp(current, DO_TOKEN, 2) == 0){
-                do_count++;
-            }
-
-            if (strncmp(current, DONE_TOKEN, 4) == 0){
-                done_count++;
-            }
-
-            if (if_count == do_count && !do_found){
-                do_index = j;
-                do_found = true;
-            }
-
-            if (if_count == done_count){
-                done_index = j;
-            }
-
-        }
-
-        //printf("if : %d, do : %d\n", start_index, do_index);
-
-        // if :
-        Expression * condition = parse_line(line, start_index + 1, do_index - 1);
-        if (condition==NULL){
-            return NULL;
-        }
-
-        Expression * statement = parse_line(line, do_index +1, done_index - 1);
-        if (statement == NULL){
-            destroy_expression(condition);
-            return NULL;
-        }
-
-        return create_exp(IF_EXPRESSION, condition, statement);
-    }
-
-    // there is no 'if' statement, nor logical operator. The commnad line is a single command.
-    if (if_count == 0){
-        return create_cmd(line->content, start_index, end_index);
-    }
-
-    // error in parsing
-    printf("error in parsing\n");
-    return NULL;
-
-}
-
-
-void free_split_line(split_line* line) {
-    /// To `free()` the char** and all its sub-arrays
-    if(DEBUG != 0) printf("free_split_line   |   line sub arrays size: %d\n", line->size);
-    for(int i = 0; i < line->size; i++) {
-        if(DEBUG != 0) printf("free_split_line   |   content[%d]: %s\n", i, line->content[i]);
-        free(line->content[i]);
-    }
-    free(line->content);
-    free(line);
-}
-
 void run_background_cmd(split_line* line) {
 
     /* To replace the trailing '&' from the command. */
@@ -391,7 +206,6 @@ void run_background_cmd(split_line* line) {
         sleep(3);  // todo: remove eventually (after tests)
 
         /* Executing the commands. */
-//      execvp(args[0], args);
         if(DEBUG != 0) printf("SUB___ast expression is formed\n");
         eval(ast);
         if(DEBUG != 0) printf("SUB___exited eval\n");
@@ -535,8 +349,6 @@ int main (void) {
                 destroy_expression(ast);  // todo: ensure eval has it inside (remove from here)
                 free_split_line(line);
                 if(DEBUG != 0) printf("exited eval\n");
-
-//                run_shell(args);
             }
 
             if(DEBUG != 0) printf("done running shell on one command\n");

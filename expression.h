@@ -74,7 +74,7 @@ typedef struct command {
 typedef struct split_line {
     int size;           // size of the array
     char** content;     // array of words
-    bool thread_flag;
+    bool thread_flag;   // if '&' at the end
 } split_line;
 
 
