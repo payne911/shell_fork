@@ -125,7 +125,6 @@ int run_command(command* cmd){
 //    return success;
 
     if(DEBUG != 0) {
-        printf("in debug");
         int tmp = count_words(cmd->cmd);
         printf("count is %d\n", tmp);
         while(tmp-- != 0) {
@@ -151,7 +150,7 @@ int run_command(command* cmd){
             bool successfulWrite = writeOutputInFile(filePath);
             if(DEBUG != 0) printf("filepath for output: %s | successfulWrite: %s\n", filePath, successfulWrite==0?"false":"true");
             if (!successfulWrite) {
-                exit(-2);  // todo: in case of error
+                printf("unsuccessful write coming from 'redirect output' flag\n");  // todo: in case of error
             }
         }
 
@@ -164,7 +163,7 @@ int run_command(command* cmd){
 
 
     } else {  // back in parent
-        waitpid(-1, &status, 0);  // wait for child to finish
+        waitpid(pid, &status, 0);  // wait for child to finish
 
         if(WIFEXITED(status)) { if(DEBUG != 0) printf("OK: Child exited with exit status %d.\n", WEXITSTATUS(status)); }
         else { if(DEBUG != 0) printf("ERROR: Child has not terminated correctly. Status is: %d\n", status); }
@@ -177,46 +176,90 @@ int run_command(command* cmd){
 }
 
 
-void run_shell(char** args) {
-    /// Does the forking and executes the given command.
+/* todo: eventually remove this block  |  use it to test basic functions without going through `eval(ast)` */
+//void run_shell(char** args) {
+//    /// Does the forking and executes the given command.
+//
+//    /* Forking. */
+//    int status;  // todo: see https://www.gnu.org/software/libc/manual/html_node/Process-Creation-Example.html   ??
+//    pid_t    pid;
+//    if(DEBUG != 0) printf("run_shell: just before fork.\n");
+//    pid = fork();
+//
+//    if (pid < 0) {
+//        fprintf(stderr, "fork failed");
+//
+//    } else if (pid == 0) {  // child
+//        if(DEBUG != 0) printf("Child executing the command.\n\n");
+//
+////        /* Redirecting output. */
+////        const char* filePath = "../test_output_file.txt";
+////        bool successfulWrite = writeOutputInFile(filePath);
+////        if(DEBUG != 0) printf("filepath for output: %s | successfulWrite: %s\n", filePath, successfulWrite==0?"false":"true");
+////        if (!successfulWrite) {
+////            printf("todo\n");
+////        }
+//
+//        /* Executing the commands. */
+//        execvp(args[0], args);
+//
+//        /* Child process failed. */
+//        if(DEBUG != 0) printf("execvp didn't finish properly: running exit on child process\n");
+//        exit(-1);  // todo: free variables?
+//
+//
+//    } else {  // back in parent
+//        waitpid(-1, &status, 0);  // wait for child to finish
+//
+//        if (WIFEXITED(status)) { if(DEBUG != 0) printf("OK: Child exited with exit status %d.\n", WEXITSTATUS(status)); }
+//        else { if(DEBUG != 0) printf("ERROR: Child has not terminated correctly. Status is: %d\n", status); }
+//
+//        free(args);
+//        if(DEBUG != 0) printf("Terminating parent of the child.\n");
+//    }
+//}
+
+
+void free_split_line(split_line* line) {
+    /// To `free()` the char** and all its sub-arrays
+    free(line->content);
+    for(int i = 0; i < line->size; i++) {
+        free(line->content[i]);
+    }
+}
+
+void run_background_cmd(split_line* line, Expression* ast) {
+    line->content[line->size-1] = NULL;  // to replace the trailing '&' from the command
 
     /* Forking. */
-    int status;  // todo: see https://www.gnu.org/software/libc/manual/html_node/Process-Creation-Example.html   ??
     pid_t    pid;
-    if(DEBUG != 0) printf("run_shell: just before fork.\n");
+    if(DEBUG != 0) printf("SUB___shell: just before fork.\n");
     pid = fork();
 
     if (pid < 0) {
-        fprintf(stderr, "fork failed");
+        fprintf(stderr, "SUB___fork failed");
 
     } else if (pid == 0) {  // child
-        if(DEBUG != 0) printf("Child executing the command.\n\n");
-
-//        /* Redirecting output. */
-//        const char* filePath = "../test_output_file.txt";
-//        bool successfulWrite = writeOutputInFile(filePath);
-//        if(DEBUG != 0) printf("filepath for output: %s | successfulWrite: %s\n", filePath, successfulWrite==0?"false":"true");
-//        if (!successfulWrite) {
-//            printf("todo\n");
-//        }
+        if(DEBUG != 0) printf("SUB___Child executing the command.\n\n");
+        sleep(3);  // todo: remove eventually (after tests)
 
         /* Executing the commands. */
-        execvp(args[0], args);
+//                    execvp(args[0], args);
+        if(DEBUG != 0) printf("SUB___ast expression is formed\n");
+        eval(ast);
+        if(DEBUG != 0) printf("SUB___exited eval\n");
 
         /* Child process failed. */
-        if(DEBUG != 0) printf("execvp didn't finish properly: running exit on child process\n");
+        if(DEBUG != 0) printf("SUB___execvp didn't finish properly: running exit on child process\n");
         exit(-1);  // todo: free variables?
 
 
     } else {  // back in parent
-        waitpid(-1, &status, 0);  // wait for child to finish
-
-        if (WIFEXITED(status)) { if(DEBUG != 0) printf("OK: Child exited with exit status %d.\n", WEXITSTATUS(status)); }
-        else { if(DEBUG != 0) printf("ERROR: Child has not terminated correctly. Status is: %d\n", status); }
-
-        free(args);
-        if(DEBUG != 0) printf("Terminating parent of the child.\n");
+        free_split_line(line);  // todo: what to do with this now?
+        if(DEBUG != 0) printf("SUB___Terminating parent of the child.\n");
     }
+
+    if(DEBUG != 0) printf("SUB___thread has been created.\n");
 }
 
 
@@ -456,7 +499,7 @@ int main (void) {
     struct sigaction bonus2_signal;  // todo, read: https://indradhanush.github.io/blog/writing-a-unix-shell-part-3/
     bonus2_signal.sa_handler = &ctrl_Z_handler;
     sigemptyset(&bonus2_signal.sa_mask);
-    bonus2_signal.sa_flags = SA_RESTART;  // todo: useful ?
+    bonus2_signal.sa_flags = SA_RESTART;
     if (sigaction(SIGTSTP, &bonus2_signal, NULL) == -1) {  // todo: error handling
         perror(0);
         printf("error within SIGTSTP signal thingy\n");
@@ -474,8 +517,9 @@ int main (void) {
             if(DEBUG != 0) printf("error while reading line: aborting shell\n");
         } else if (strcmp(args[0], "eof") == 0) {  // home-made "exit" command
             running = false;
-            // todo: free the sub-arrays (args[x])
-            free(args);
+            int count = count_words(args);
+            split_line* line = form_split_line(args, count);
+            free_split_line(line);
             if(DEBUG != 0) printf("aborting shell\n");
         } else {
             if(DEBUG != 0) printf("shell processing new command\n");
@@ -483,45 +527,14 @@ int main (void) {
             int count = count_words(args);
             split_line* line = form_split_line(args, count);
             if(line == NULL) {  // in case an error occured: skip and ask new query
-                free(args);
+                free_split_line(line);
                 continue;
             }
 
             Expression* ast = parse_line(line, 0, line->size - 1);
 
             if(line->thread_flag) {
-
-                line->content[line->size-1] = NULL;  // to replace the trailing '&' from the command
-
-                /* Forking. */
-                pid_t    pid;
-                if(DEBUG != 0) printf("SUB___shell: just before fork.\n");
-                pid = fork();
-
-                if (pid < 0) {
-                    fprintf(stderr, "SUB___fork failed");
-
-                } else if (pid == 0) {  // child
-                    if(DEBUG != 0) printf("SUB___Child executing the command.\n\n");
-                    sleep(3);  // todo: remove eventually (after tests)
-
-                    /* Executing the commands. */
-//                    execvp(args[0], args);
-                    if(DEBUG != 0) printf("SUB___ast expression is formed\n");
-                    eval(ast);
-                    if(DEBUG != 0) printf("SUB___exited eval\n");
-
-                    /* Child process failed. */
-                    if(DEBUG != 0) printf("SUB___execvp didn't finish properly: running exit on child process\n");
-                    exit(-1);  // todo: free variables?
-
-
-                } else {  // back in parent
-                    free(args);  // todo: what to do with this now?
-                    if(DEBUG != 0) printf("SUB___Terminating parent of the child.\n");
-                }
-
-                if(DEBUG != 0) printf("SUB___thread has been created.\n");
+                run_background_cmd(line, ast);
 
             } else {
                 if(DEBUG != 0) printf("ast expression is formed\n");
