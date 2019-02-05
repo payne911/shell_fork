@@ -110,6 +110,8 @@ Expression * create_cmd (char** line, int start_index, int end_index){
 
 
     e->node.cmd_expr->cmd = malloc(sizeof(char*) * (size + 1));
+    e->node.cmd_expr->redirect_flag=false;
+    
     if (e->node.cmd_expr->cmd == NULL){
         free(e->node.cmd_expr);
         free(e);
@@ -183,7 +185,6 @@ Expression * create_cmd (char** line, int start_index, int end_index){
     }
 
     e->node.cmd_expr->cmd[size] = NULL;
-    // e->node.cmd_expr->redirect_flag=false;
     return e;
 }
 
