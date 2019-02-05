@@ -8,21 +8,17 @@
 #define EXIT_SHELL "exit"
 #define LS "ls"
 #define ECHO "echo"
-
 #define IF_TOKEN "if"
 #define DO_TOKEN "do"
 #define DONE_TOKEN "done"
 #define OR_TOKEN "||"
 #define AND_TOKEN "&&"
+#define BACK_TOKEN "&"
 #define IF_SEP ";"
 #define REDIRECT_SEPERATOR ">"
-
 #define FAIL 'F'
 #define SUCCESS 'S'
-
 #define INVALID_INDEX -1
-
-#define background_task_token "&"
 
 
 typedef enum {COMMAND, IF_EXPRESSION, OR_EXPRESSION, AND_EXPRESSION} exp_type;
@@ -31,7 +27,7 @@ static char *enumStrings[] = {"COMMAND", "IF_EXPRESSION", "OR_EXPRESSION", "AND_
 typedef struct command {
     char**  cmd;
     bool redirect_flag;
-    bool background_flag;
+    // bool background_flag;
     char* output_file;
 } command;
 
@@ -92,7 +88,6 @@ Expression * create_exp (exp_type type, Expression* first, Expression* second){
  */
 Expression * create_cmd (char** line, int start_index, int end_index){
 
-
     int size = end_index - start_index + 1;
     if (strncmp(line[start_index + size - 1], IF_SEP, 1) == 0){
         size--;
@@ -140,10 +135,6 @@ Expression * create_cmd (char** line, int start_index, int end_index){
                     return e;
             }
 
-            else {
-                // there is a word after
-                e->node.cmd_expr->output_file=next;
-            }
         }       
 
         else if (strncmp(line[i+start_index], REDIRECT_SEPERATOR, 1) == 0){
@@ -175,7 +166,8 @@ Expression * create_cmd (char** line, int start_index, int end_index){
                
                 // looks like 'command > my_file.txt'
                 e->node.cmd_expr->redirect_flag=true;
-                e->node.cmd_expr->output_file=line[i+start_index+1];
+                e->node.cmd_expr->output_file=next;
+                printf("dest : %s\n", next);
                 printf("reallocating : %i\n", i + 1);
                 char ** tmp = realloc(e->node.cmd_expr->cmd, (sizeof(char*) * (i + 1)));
                     if (tmp == NULL){
@@ -191,6 +183,7 @@ Expression * create_cmd (char** line, int start_index, int end_index){
     }
 
     e->node.cmd_expr->cmd[size] = NULL;
+    // e->node.cmd_expr->redirect_flag=false;
     return e;
 }
 
