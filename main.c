@@ -40,7 +40,7 @@ size_t optimizer_cnt(const char *str) {
     /// Returns min(1, #words).
 
     char copied_str[strlen(str)+1];
-    strcpy(copied_str, str);  // todo: OOM ??
+    strcpy(copied_str, str);
     size_t count = 1;
 
     strtok(copied_str, " ");
@@ -95,7 +95,7 @@ char** split_str (const char* str, const char delim[]) {
     while ((token = strtok (NULL, delim)) != NULL) {
         if ((result[++tmp] = strdup (token)) == 0) {
             /* In case of OOM, each past array must also be freed. */
-            while (tmp-- != 0) {  // todo: inequality is right? (will free down to result[1] inclusively?)
+            while (tmp-- != 0) {
                 if(DEBUG != 0) printf("Bug allocating words of split. Currently freeing index %d\n", tmp);
                 free(result[tmp]);
             }
@@ -126,14 +126,6 @@ bool writeOutputInFile(const char* output) {
  */
 int run_command(command* cmd){
 
-    if(DEBUG != 0) {
-        int tmp = count_words(cmd->cmd);
-        printf("count is %d\n", tmp);
-        while(tmp-- != 0) {
-            printf("run_cmd %d : %s\n", tmp, cmd->cmd[tmp]);
-        }
-    }
-
     /* Forking. */
     int         status;
     pid_t       pid;
@@ -141,8 +133,7 @@ int run_command(command* cmd){
 
 
     if (pid < 0) {
-        fprintf(stderr, "fork failed");
-        return false;  // todo: not necessarily what we want
+        return false;
 
     } else if (pid == 0) {  // child
         if(DEBUG != 0) printf("Child executing the command.\n");
@@ -151,9 +142,8 @@ int run_command(command* cmd){
         if(cmd->redirect_flag) {
             const char* filePath = cmd->output_file;  // ex: "./test_output_file.txt";
             bool successfulWrite = writeOutputInFile(filePath);
-            if(DEBUG != 0) printf("filepath for output: %s | successfulWrite: %s\n", filePath, successfulWrite==0?"false":"true");
-            if (!successfulWrite) {
-                printf("unsuccessful write coming from 'redirect output' flag\n");  // todo: in case of error
+            if(!successfulWrite) {
+                // todo: in case of error
             }
         }
 
@@ -181,11 +171,19 @@ int run_command(command* cmd){
 
         } else {
             if(DEBUG != 0) printf("ERROR: Child has not terminated correctly. Status is: %d\n", status);
-            return false;  // todo: not necessarily what we want
+            return false;
         }
     }
 }
 
+
+void run_sequential_cmd(split_line* line) {
+    Expression* ast = parse_line(line, 0, line->size - 1);
+    eval(ast);
+
+    destroy_expression(ast);
+    free_split_line(line);
+}
 
 void run_background_cmd(split_line* line) {
 
@@ -199,11 +197,10 @@ void run_background_cmd(split_line* line) {
     pid = fork();
 
     if (pid < 0) {
-        fprintf(stderr, "SUB___fork failed");
+        free_split_line(line);
 
     } else if (pid == 0) {  // child
         if(DEBUG != 0) printf("SUB___Child executing the command.\n\n");
-        sleep(3);  // todo: remove eventually (after tests)
 
         /* Executing the commands. */
         if(DEBUG != 0) printf("SUB___ast expression is formed\n");
@@ -213,13 +210,13 @@ void run_background_cmd(split_line* line) {
         /* Child process failed. */
         if(DEBUG != 0) printf("SUB___execvp didn't finish properly: running exit on child process\n");
         free_split_line(line);
-        destroy_expression(ast);  // todo: ensure eval has it inside (remove from here)
-        exit(-1);  // todo: remove?
+        destroy_expression(ast);
+        exit(-1);
 
 
     } else {  // back in parent
         free_split_line(line);
-        destroy_expression(ast);  // todo: ensure eval has it inside (remove from here)
+        destroy_expression(ast);
 
         if(DEBUG != 0) printf("SUB___Terminating parent of the child.\n");
     }
@@ -248,7 +245,7 @@ char** query_and_split_input() {
     size_t buffer_size;
     if (getline(&input_str, &buffer_size, stdin) == -1) {
         if(DEBUG != 0) printf("QUERY____error while trying to read line\n");
-        //free(input_str);  // todo: how to know if malloc'd ?
+        free(input_str);
         return NULL;
     }
     input_str[strcspn(input_str, "\n")] = 0;  // crop to first new-line    todo: \r ??  https://stackoverflow.com/a/28462221/9768291
@@ -278,6 +275,23 @@ void zombie_handler(int sigNo) {
 
 void ctrl_Z_handler(int sigNo) {
     printf("Caught Ctrl-Z\n");
+
+//    /* Forking. */
+//    pid_t    pid;
+//    if(DEBUG != 0) printf("CZ___shell: just before fork.\n");
+//    pid = fork();
+//
+//    if (pid < 0) {
+//        if(DEBUG != 0) printf("CZ___Error in the creation of the child.\n");
+//
+//    } else if (pid == 0) {  // child
+//        if(DEBUG != 0) printf("CZ___Child executing the command.\n\n");
+//
+//    } else {  // back in parent
+//        if(DEBUG != 0) printf("CZ___Terminating parent of the child.\n");
+//    }
+//
+//    if(DEBUG != 0) printf("CZ___run_bg_cmd is over.\n");
 }
 
 
@@ -290,34 +304,27 @@ int main (void) {
     bool running = true;
 
 
-    /* To reap zombie child processes created by using '&'. */
-    struct sigaction zombie_reaper;  // todo, read: http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
+    /* To reap zombie-child processes created by using '&'. */
+    struct sigaction zombie_reaper;
     zombie_reaper.sa_handler = &zombie_handler;
     sigemptyset(&zombie_reaper.sa_mask);
     zombie_reaper.sa_flags = SA_RESTART | SA_NOCLDSTOP;
-    if (sigaction(SIGCHLD, &zombie_reaper, NULL) == -1) {  // todo: error handling
-        perror(0);
-        printf("error within SIGCHLD signal thingy\n");
-        exit(1);
-    }
+    sigaction(SIGCHLD, &zombie_reaper, NULL);
 
     /* To treat Ctrl-Z (Bonus #2). */
-    struct sigaction bonus2_signal;  // todo, read: https://indradhanush.github.io/blog/writing-a-unix-shell-part-3/
+    struct sigaction bonus2_signal;
     bonus2_signal.sa_handler = &ctrl_Z_handler;
     sigemptyset(&bonus2_signal.sa_mask);
     bonus2_signal.sa_flags = SA_RESTART;
-    if (sigaction(SIGTSTP, &bonus2_signal, NULL) == -1) {  // todo: error handling
-        perror(0);
-        printf("error within SIGTSTP signal thingy\n");
-        exit(1);
-    }
+    sigaction(SIGTSTP, &bonus2_signal, NULL);
 
+    /* Our shell. */
     while(running) {
 
         /* Ask for an instruction. */
         char** args = query_and_split_input();
 
-        /* Executing the commands. */
+        /* Error handling  |  exit  |  set up. */
         if (args == NULL) {  // error while reading input
             running = false;
             if(DEBUG != 0) printf("error while reading line: aborting shell\n");
@@ -326,11 +333,9 @@ int main (void) {
             int count = count_words(args);
             split_line* line = form_split_line(args, count);  // to facilitate the freeing of memory
             free_split_line(line);
-            if(DEBUG != 0) printf("aborting shell\n");
+            if(DEBUG != 0) printf("exit command detected\n");
         } else {
             if(DEBUG != 0) printf("shell processing new command\n");
-
-            /* Normal execution of a shell command. */
             int count = count_words(args);
             split_line* line = form_split_line(args, count);
             if(line == NULL) {  // in case an error occured: skip and ask new query
@@ -338,17 +343,15 @@ int main (void) {
                 continue;
             }
 
+            /* Executing the commands. */
             if(line->thread_flag) {
+                if(DEBUG != 0) printf("before bg cmd\n");
                 run_background_cmd(line);
-
+                if(DEBUG != 0) printf("after bg cmd\n");
             } else {
-                if(DEBUG != 0) printf("ast expression is formed\n");
-                Expression* ast = parse_line(line, 0, line->size - 1);
-                eval(ast);
-
-                destroy_expression(ast);  // todo: ensure eval has it inside (remove from here)
-                free_split_line(line);
-                if(DEBUG != 0) printf("exited eval\n");
+                if(DEBUG != 0) printf("before seq cmd\n");
+                run_sequential_cmd(line);
+                if(DEBUG != 0) printf("after seq cmd\n");
             }
 
             if(DEBUG != 0) printf("done running shell on one command\n");
