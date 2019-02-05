@@ -1,13 +1,16 @@
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
-#include <stdbool.h>
-#include <sys/types.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <stdbool.h>
+#include <fcntl.h>
+#include <signal.h>
+
 #include "expression.h"
 
 #define DEFAULT_BUFFER_SIZE 64
+#define DEBUG 0
 
 
 typedef struct split_line {
@@ -26,7 +29,7 @@ void free_splitLine(split_line * line){
 // function declaration
 
 split_line* split_str       (char* str, const char delim[]);
-
+bool writeOutputInFile      (const char* output);
 
 /**
  * from a list of words, parse it to create a abstract syntax tree
@@ -291,8 +294,12 @@ int run_command(command * cmd){
     
     int status;
     pid_t pid = fork();
-    if(pid == 0){
-        execv(cmd->cmd[0], cmd->cmd);
+    
+    if (pid < 0) {
+        fprintf(stderr, "fork failed");
+        return false;
+    } else if (pid == 0) {  // child
+        execvp(cmd->cmd[0], cmd->cmd);
     } else {
         waitpid(pid, &status, 0);
         if (WIFEXITED(status)){
@@ -303,11 +310,17 @@ int run_command(command * cmd){
     }
 }
 
+bool writeOutputInFile(const char* output) {
+    int fileDescriptor = 
+        open(output, O_WRONLY | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+    if(fileDescriptor < 0) return false;            // in case of error
+    if(dup2(fileDescriptor,1) < 0) return false;    // in case of error
+    if(close(fileDescriptor) < 0) return false;     // in case of error
+    return true;
+}
+
 
 int main() {
-
-    // system("clear");
-
     // read line continuously
     do {
 
@@ -351,7 +364,6 @@ int main() {
 
             // here, read_buffer is the whole line
             split_line* line = split_str(read_buffer, " ");
-            free(read_buffer);
 
             // no input
             if (line->size == 0){
@@ -371,6 +383,8 @@ int main() {
             destroy_expression(ast);
             free_splitLine(line);
         }
+        
+        free(read_buffer);
 
     } while (true);
 
