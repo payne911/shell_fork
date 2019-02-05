@@ -389,9 +389,9 @@ Expression * parse_line (split_line* line, int start_index, int end_index) {
 void free_split_line(split_line* line) {
     /// To `free()` the char** and all its sub-arrays
     free(line->content);
-    printf("line sub arrays size: %d\n", line->size);
+    if(DEBUG != 0) printf("free_split_line   |   line sub arrays size: %d\n", line->size);
     for(int i = 0; i < line->size; i++) {
-        printf("content[%d]: %s\n", i, line->content[i]);
+        if(DEBUG != 0) printf("free_split_line   |   content[%d]: %s\n", i, line->content[i]);
         free(line->content[i]);
     }
     free(line);
