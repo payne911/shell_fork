@@ -164,7 +164,6 @@ Expression * create_cmd (char** line, int start_index, int end_index){
                     printf("reallocating : %i\n", i + 1);
                     char ** tmp = realloc(e->node.cmd_expr->cmd, (sizeof(char*) * (i + 1)));
                     if (tmp == NULL){
-                        free(tmp);
                         free(e->node.cmd_expr->cmd);
                         return NULL;
                     }
@@ -179,13 +178,15 @@ Expression * create_cmd (char** line, int start_index, int end_index){
                 e->node.cmd_expr->output_file=next;
                 printf("dest : %s\n", next);
                 printf("reallocating : %i\n", i + 1);
+
+                // realloc() free the old pointer, but if it fails the old pointer is still OK
                 char ** tmp = realloc(e->node.cmd_expr->cmd, (sizeof(char*) * (i + 1)));
                     if (tmp == NULL){
-                        free(tmp);
                         free(e->node.cmd_expr->cmd);
                         return NULL;
                     }
-                e->node.cmd_expr->cmd[i+1] = NULL;                
+                e->node.cmd_expr->cmd = tmp;
+                e->node.cmd_expr->cmd[i] = NULL;                
             }
 
         else {
@@ -193,7 +194,10 @@ Expression * create_cmd (char** line, int start_index, int end_index){
         }
     }
 
-    e->node.cmd_expr->cmd[size] = NULL;
+    if (!redir){
+        e->node.cmd_expr->cmd[size] = NULL;
+    }
+    
     return e;
 }
 
@@ -203,7 +207,6 @@ void destroy_expression (Expression* e){
     printf("freeing %s\n\n", enumStrings[e->id]);
 
     if (e==NULL){
-        free(e);
         return;
     }
 
@@ -225,6 +228,7 @@ void destroy_command(command* cmd_expr){
     free(cmd_expr->cmd);
     free(cmd_expr);
 }
+
 
 /**
  * evaluation of an expression
