@@ -2,7 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
-
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/wait.h>
 #include "expression.h"
 
 #define DEFAULT_BUFFER_SIZE 64
@@ -13,6 +15,12 @@ typedef struct split_line {
     char** content;     // array of words
 } split_line;
 
+
+void free_splitLine(split_line * line){
+    for(size_t i = 0; i < line->size; i++) free(line->content[i]);
+    free(line->content);
+    free(line);
+}
 
 
 // function declaration
@@ -281,10 +289,18 @@ split_line * split_str (char* str, const char delim[]) {
  */
 int run_command(command * cmd){
     
-    printf("\t%s\n", cmd->cmd[0]);
-    if (cmd->redirect_flag) printf("\nREDIRECT TO %s", cmd->output_file);
-    // if (cmd->background_flag) printf("DO IN BACKGROUND");
-    return 1;
+    int status;
+    pid_t pid = fork();
+    if(pid == 0){
+        execv(cmd->cmd[0], cmd->cmd);
+    } else {
+        waitpid(pid, &status, 0);
+        if (WIFEXITED(status)){
+            return true;
+        } else {
+            return false;
+        }
+    }
 }
 
 
@@ -295,49 +311,66 @@ int main() {
     // read line continuously
     do {
 
-        char* read_buffer = malloc(sizeof(char) * DEFAULT_BUFFER_SIZE);
         int buffer_size = DEFAULT_BUFFER_SIZE;
+        
+        char* read_buffer = malloc(sizeof(char) * DEFAULT_BUFFER_SIZE);
+        if (read_buffer == NULL){
+            continue;
+        }
+        
 
         int index = 0;
         char ch;
-
+        bool line_error = false;
         printf("votre shell> ");
         do {
             scanf("%c", &ch);
             read_buffer[index++] = ch;
             if (index == buffer_size){
-                read_buffer = realloc(read_buffer, (size_t)index+DEFAULT_BUFFER_SIZE);
+                char * tmp = realloc(read_buffer, (size_t)index+DEFAULT_BUFFER_SIZE);
+                if (tmp == NULL) {
+                    perror("error allocating line memory");
+                    free(read_buffer);
+                    line_error = true;
+                    break;
+                }
+                read_buffer = tmp;
                 buffer_size = index+DEFAULT_BUFFER_SIZE;
             }
 
         } while(ch != '\n');
 
-        // end string
-        read_buffer[index] = '\0';
+        if (!line_error){
+            // end string
+            read_buffer[index] = '\0';
 
-        if (strncmp(read_buffer, EXIT_SHELL, 4) == 0){
+            if (strncmp(read_buffer, EXIT_SHELL, 4) == 0){
+                free(read_buffer);
+                break;
+            }
+
+            // here, read_buffer is the whole line
+            split_line* line = split_str(read_buffer, " ");
             free(read_buffer);
-            break;
+
+            // no input
+            if (line->size == 0){
+                free_splitLine(line);
+                continue;
+            }
+            Expression* ast = parse_line(line, 0, line->size - 1);
+            //__debug_print(ast, 0);
+
+            if (ast != NULL){
+                eval(ast);
+            } else {
+                printf("cannot execute your command :( ");
+            }
+            
+            // once the line has been used, free memory
+            destroy_expression(ast);
+            free_splitLine(line);
         }
-
-        // here, read_buffer is the whole line
-        split_line* line = split_str(read_buffer, " ");
-        free(read_buffer);
-
-        // no input
-        if (line->size == 0){
-            // printf("no input\n");
-            continue;
-        }
-        Expression* ast = parse_line(line, 0, line->size - 1);
-        //__debug_print(ast, 0);
-
-        eval(ast);
-
-        // once the line has been used, free memory
-        destroy_expression(ast);
-        free(line->content);
-        free(line);
 
     } while (true);
 
