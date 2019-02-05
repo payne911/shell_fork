@@ -124,9 +124,12 @@ Expression * create_cmd (char** line, int start_index, int end_index){
     int i;
     bool redir = false;
     for(i = 0; i < size; i++){
+
+        // gérer le cas des multiples redirects
         if (redir){
+            char * current = line[i + start_index]; 
             char * next = line[i + start_index + 1];
-            if (strncmp(line[i+start_index], REDIRECT_SEPERATOR, 1) == 0 && 
+            if (strncmp(current, REDIRECT_SEPERATOR, 1) == 0 && 
                 (next == NULL 
                 || strncmp (next, OR_TOKEN, 2)   == 0
                 || strncmp (next, AND_TOKEN, 2)  == 0
@@ -138,7 +141,7 @@ Expression * create_cmd (char** line, int start_index, int end_index){
                     printf("no output file. Redirect kept on %s", e->node.cmd_expr->output_file);
                     return e;
             } else {
-                if (strncmp(line[i+start_index], REDIRECT_SEPERATOR, 1) == 0 && next != NULL) {
+                if (strncmp(current, REDIRECT_SEPERATOR, 1) == 0 && next != NULL) {
                     printf("dest : %s\n", next);
                     e->node.cmd_expr->output_file=next;
                 }
@@ -204,7 +207,7 @@ Expression * create_cmd (char** line, int start_index, int end_index){
 
 void destroy_expression (Expression* e){
 
-    printf("freeing %s\n\n", enumStrings[e->id]);
+    // printf("freeing %s\n\n", enumStrings[e->id]);
 
     if (e==NULL){
         return;
@@ -237,7 +240,7 @@ void destroy_command(command* cmd_expr){
  * @return if the evaluation succeeded or not
  */
 int eval (Expression* exp){
-    printf("evaluation : %s\n", enumStrings[exp->id]);
+    // printf("evaluation : %s\n", enumStrings[exp->id]);
     switch (exp->id){
         case IF_EXPRESSION :
             if (eval(exp->node.cond_expr.left)){
