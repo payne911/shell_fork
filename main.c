@@ -39,12 +39,11 @@ typedef struct split_line {
     bool thread_flag;   // if '&' at the end
 } split_line;
 
-int count_words(char**);
 
 
 
 size_t optimizer_cnt(const char *str) {
-    /// Used to get an upper limit on the amount of words separated by a space in the input string.
+    /// Returns min(1, #words).
 
     char copied_str[strlen(str)+1];
     strcpy(copied_str, str);  // todo: OOM ??
@@ -56,6 +55,19 @@ size_t optimizer_cnt(const char *str) {
     }
 
     return count;
+}
+
+int count_words(char** tab) {
+    /// Counts the amount of words in the split line (parsed from input by the user).
+    int tmp = -1;
+
+    while(true) {
+        tmp++;
+        if(tab[tmp] == NULL)
+            break;
+    }
+
+    return tmp;
 }
 
 char** split_str (const char* str, const char delim[]) {
@@ -119,10 +131,6 @@ bool writeOutputInFile(const char* output) {
  * @return
  */
 int run_command(command* cmd){
-//    bool success = cmd.cmd_name[0] == SUCCESS;
-//    printf("running : %s (%s)\n", cmd.cmd_name, success?"SUCCESS":"FAIL");
-//    printf("args : %s");
-//    return success;
 
     if(DEBUG != 0) {
         int tmp = count_words(cmd->cmd);
@@ -140,6 +148,7 @@ int run_command(command* cmd){
 
     if (pid < 0) {
         fprintf(stderr, "fork failed");
+        return false;
 
     } else if (pid == 0) {  // child
         if(DEBUG != 0) printf("Child executing the command.\n");
@@ -159,6 +168,7 @@ int run_command(command* cmd){
 
         /* Child process failed. */
         if(DEBUG != 0) printf("execvp didn't finish properly: running exit on child process\n");
+        return false;
         exit(-1);  // todo: free variables?
 
 
@@ -170,54 +180,10 @@ int run_command(command* cmd){
 
 //        free(args);
         if(DEBUG != 0) printf("Terminating parent of the child.\n");
+
+        return true;
     }
-
-    return true;
 }
-
-
-/* todo: eventually remove this block  |  use it to test basic functions without going through `eval(ast)` */
-//void run_shell(char** args) {
-//    /// Does the forking and executes the given command.
-//
-//    /* Forking. */
-//    int status;  // todo: see https://www.gnu.org/software/libc/manual/html_node/Process-Creation-Example.html   ??
-//    pid_t    pid;
-//    if(DEBUG != 0) printf("run_shell: just before fork.\n");
-//    pid = fork();
-//
-//    if (pid < 0) {
-//        fprintf(stderr, "fork failed");
-//
-//    } else if (pid == 0) {  // child
-//        if(DEBUG != 0) printf("Child executing the command.\n\n");
-//
-////        /* Redirecting output. */
-////        const char* filePath = "../test_output_file.txt";
-////        bool successfulWrite = writeOutputInFile(filePath);
-////        if(DEBUG != 0) printf("filepath for output: %s | successfulWrite: %s\n", filePath, successfulWrite==0?"false":"true");
-////        if (!successfulWrite) {
-////            printf("todo\n");
-////        }
-//
-//        /* Executing the commands. */
-//        execvp(args[0], args);
-//
-//        /* Child process failed. */
-//        if(DEBUG != 0) printf("execvp didn't finish properly: running exit on child process\n");
-//        exit(-1);  // todo: free variables?
-//
-//
-//    } else {  // back in parent
-//        waitpid(-1, &status, 0);  // wait for child to finish
-//
-//        if (WIFEXITED(status)) { if(DEBUG != 0) printf("OK: Child exited with exit status %d.\n", WEXITSTATUS(status)); }
-//        else { if(DEBUG != 0) printf("ERROR: Child has not terminated correctly. Status is: %d\n", status); }
-//
-//        free(args);
-//        if(DEBUG != 0) printf("Terminating parent of the child.\n");
-//    }
-//}
 
 
 /**
@@ -423,34 +389,23 @@ void run_background_cmd(split_line* line) {
 
         /* Child process failed. */
         if(DEBUG != 0) printf("SUB___execvp didn't finish properly: running exit on child process\n");
-        exit(-1);  // todo: free variables?
+        free_split_line(line);
+        destroy_expression(ast);  // todo: ensure eval has it inside (remove from here)
+        exit(-1);  // todo: remove?
 
 
     } else {  // back in parent
-        free_split_line(line);  // todo: what to do with this now?
+        free_split_line(line);
         destroy_expression(ast);  // todo: ensure eval has it inside (remove from here)
 
         if(DEBUG != 0) printf("SUB___Terminating parent of the child.\n");
     }
 
-    if(DEBUG != 0) printf("SUB___thread has been created.\n");
-}
-
-
-int count_words(char** tab) {
-    /// Counts the amount of words in the split line (parsed from input by the user).
-    int tmp = -1;
-
-    while(true) {
-        tmp++;
-        if(tab[tmp] == NULL)
-            break;
-    }
-
-    return tmp;
+    if(DEBUG != 0) printf("SUB___run_bg_cmd is over.\n");
 }
 
 split_line* form_split_line(char** args, int wordc) {
+    /// Properly sets up a "SplitLine" struct with the char** obtained from the query.
     split_line* sl = malloc(sizeof(split_line));
     if(sl == NULL) return NULL;  // OOM
     sl->content = args;
@@ -469,7 +424,7 @@ char** query_and_split_input() {
     char* input_str = NULL;
     size_t buffer_size;
     if (getline(&input_str, &buffer_size, stdin) == -1) {
-        if(DEBUG != 0) printf("error while trying to read line\n");
+        if(DEBUG != 0) printf("QUERY____error while trying to read line\n");
         //free(input_str);  // todo: how to know if malloc'd ?
         return NULL;
     }
@@ -478,11 +433,11 @@ char** query_and_split_input() {
     /* Splitting the input string. */
     char** args;
     if ((args = split_str (input_str, " ")) == 0) {
-        if(DEBUG != 0) printf("error in split_str function: querying new command\n");
+        if(DEBUG != 0) printf("QUERY____error in split_str function: querying new command\n");
         free(input_str);
         return query_and_split_input();
     } else {
-        if(DEBUG != 0) printf("split_str function finished\n");
+        if(DEBUG != 0) printf("QUERY____split_str function finished\n");
         free(input_str);
         return args;
     }
@@ -581,5 +536,5 @@ int main (void) {
 
     /* We're all done here. See you! */
     printf("Bye!\n");
-    exit (0);  // todo: why ???
+    exit (0);
 }
