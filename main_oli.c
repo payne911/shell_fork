@@ -14,113 +14,10 @@ typedef struct split_line {
 } split_line;
 
 
+
 // function declaration
 
 split_line* split_str       (char* str, const char delim[]);
-Expression* parse_line      (split_line* line, int start_index, int end_index);
-
-
-
-size_t optimizer_cnt (const char *str) {
-    /// Used to get an upper limit on the amount of words separated by a space in the input string.
-
-    char copied_str[strlen(str)+1];
-    strcpy(copied_str, str);  // todo: OOM ??
-    size_t count = 1;
-
-    strtok(copied_str, " ");
-    while(strtok(NULL, " ") != 0) {
-        count++;
-    }
-
-    return count;
-}
-
-
-/**
- * Splits a string into array of of strings based on all delimiters specified
- * @param str
- * @param delim
- * @return
- */
-split_line* split_str (char* str, const char delim[]) {
-    /// Returns a list of pointers to strings that came from splitting the input.
-    /// Returns NULL in case of error.
-
-    if (strlen(str) == 1){
-        split_line* sl = malloc(sizeof(split_line));
-        sl->size = 0;
-        sl->content = NULL;
-        return sl;
-    }
-
-    char* copied_input = strdup(str);  // because 'strtok()' alters the string it passes through
-    if (copied_input == 0) return NULL;  // OOM
-
-    /* Counting content to optimize allocated's memory size. */
-    size_t nwords = optimizer_cnt(copied_input);
-    char** result;
-    if ((result = malloc((nwords+1) * sizeof(char *))) == 0) return NULL;  // OOM
-
-    /* Obtaining first word. */
-    char* token = strtok (copied_input, delim);
-    if (token == NULL) {
-        //if(DEBUG != 0) printf("Bug extracting first word of split\n");
-        free(result);
-        free(copied_input);
-        return NULL;
-    } else if ((result[0] = strdup (token)) == 0) {  // OOM
-        //if(DEBUG != 0) printf("Bug allocating first word of split\n");
-        free(result);
-        free(copied_input);
-        return NULL;
-    }
-
-    /* To populate the whole array with the rest of the content. */
-    int tmp = 0;
-    while ((token = strtok (NULL, delim)) != NULL) {
-        if ((result[++tmp] = strdup (token)) == 0) {
-            /* In case of OOM, each past array must also be freed. */
-            while (tmp-- != 0) {  // todo: inequality is right? (will free down to result[1] inclusively?)
-                //if(DEBUG != 0) printf("Bug allocating content of split. Currently freeing index %d\n", tmp);
-                free(result[tmp]);
-            }
-            free(result);
-            free(copied_input);
-            return NULL;
-        }
-    }
-
-    result[++tmp] = NULL;  /* Must end with NULL */
-
-    free(copied_input);
-
-    if (result[0] == NULL){
-        tmp = 0;
-    }else if (str[strlen(str) - 2] == ' '){
-        tmp--;
-    }
-
-    // printf("Size = %d\n", tmp);
-
-    split_line* sl = malloc(sizeof(split_line));
-    sl->content = result;
-    sl->size = tmp;
-    return sl;
-}
-
-
-/**
- * run a command line
- * @param command
- * @return
- */
-int run_command(command cmd){
-    bool success = cmd.cmd_name[0] == SUCCESS;
-    printf("running : %s (%s)\n", cmd.cmd_name, success?"SUCCESS":"FAIL");
-    printf("args : %s");
-    return success;
-}
 
 
 /**
@@ -131,7 +28,7 @@ int run_command(command cmd){
  * @param end_index
  * @return
  */
-Expression * parse_line (split_line* line, int start_index, int end_index){
+Expression * parse_line (split_line* line, int start_index, int end_index) {
 
     //printf("parsing line from %d to %d\n", start_index, end_index);
 
@@ -145,16 +42,35 @@ Expression * parse_line (split_line* line, int start_index, int end_index){
 
         char* current = line->content[i];
 
+        // counting if
         if (strncmp(current, IF_TOKEN, 2) == 0){
-            if_count++;
+            if (i == start_index){
+                    if_count++;
+            } else {
+                char* previous = line->content[i - 1];
+                if (strncmp(previous, IF_TOKEN, 2) == 0
+                    || strncmp(previous, DO_TOKEN, 2) == 0
+                    || strncmp(previous, AND_TOKEN, 2) == 0
+                    || strncmp(previous, OR_TOKEN, 2) == 0){
+                    if_count++;
+                }
+            }
         }
 
+        // counting do
         if (strncmp(current, DO_TOKEN, 2) == 0 && strncmp(current, DONE_TOKEN, 4) != 0){
-            do_count++;
+            // todo : check if it is a true 'do'
+            if (i != start_index && strncmp(line->content[i-1], IF_SEP, 1) == 0){
+                do_count++;
+            }
         }
 
+
+        // counting done
         if (strncmp(current, DONE_TOKEN, 4) == 0){
-            done_count++;
+            if (i != start_index && strncmp(line->content[i-1], IF_SEP, 1) == 0){
+                done_count++;
+            }
         }
 
         // outside of an if statement implies if_count == done_count
@@ -269,9 +185,112 @@ Expression * parse_line (split_line* line, int start_index, int end_index){
 
 }
 
+size_t optimizer_cnt (const char *str) {
+    /// Used to get an upper limit on the amount of words separated by a space in the input string.
+
+    char copied_str[strlen(str)+1];
+    strcpy(copied_str, str);  // todo: OOM ??
+    size_t count = 1;
+
+    strtok(copied_str, " ");
+    while(strtok(NULL, " ") != 0) {
+        count++;
+    }
+
+    return count;
+}
+
+
+/**
+ * Splits a string into array of of strings based on all delimiters specified
+ * @param str
+ * @param delim
+ * @return
+ */
+split_line * split_str (char* str, const char delim[]) {
+    /// Returns a list of pointers to strings that came from splitting the input.
+    /// Returns NULL in case of error.
+
+    if (strlen(str) == 1){
+        split_line* sl = malloc(sizeof(split_line));
+        sl->size = 0;
+        sl->content = NULL;
+        return sl;
+    }
+
+    char* copied_input = strdup(str);  // because 'strtok()' alters the string it passes through
+    if (copied_input == 0) return NULL;  // OOM
+
+    /* Counting content to optimize allocated's memory size. */
+    size_t nwords = optimizer_cnt(copied_input);
+    char** result;
+    if ((result = malloc((nwords+1) * sizeof(char *))) == 0) return NULL;  // OOM
+
+    /* Obtaining first word. */
+    char* token = strtok (copied_input, delim);
+    if (token == NULL) {
+        //if(DEBUG != 0) printf("Bug extracting first word of split\n");
+        free(result);
+        free(copied_input);
+        return NULL;
+    } else if ((result[0] = strdup (token)) == 0) {  // OOM
+        //if(DEBUG != 0) printf("Bug allocating first word of split\n");
+        free(result);
+        free(copied_input);
+        return NULL;
+    }
+
+    /* To populate the whole array with the rest of the content. */
+    int tmp = 0;
+    while ((token = strtok (NULL, delim)) != NULL) {
+        if ((result[++tmp] = strdup (token)) == 0) {
+            /* In case of OOM, each past array must also be freed. */
+            while (tmp-- != 0) {  // todo: inequality is right? (will free down to result[1] inclusively?)
+                //if(DEBUG != 0) printf("Bug allocating content of split. Currently freeing index %d\n", tmp);
+                free(result[tmp]);
+            }
+            free(result);
+            free(copied_input);
+            return NULL;
+        }
+    }
+
+    result[++tmp] = NULL;  /* Must end with NULL */
+
+    free(copied_input);
+
+    if (result[0] == NULL){
+        tmp = 0;
+    }else if (str[strlen(str) - 2] == ' '){
+        tmp--;
+    }
+
+    // printf("Size = %d\n", tmp);
+
+    split_line* sl = malloc(sizeof(split_line));
+    sl->content = result;
+    sl->size = tmp;
+    return sl;
+}
+
+
+/**
+ * run a command line
+ * @param command
+ * @return
+ */
+int run_command(command * cmd){
+    
+    printf("\t%s\n", cmd->cmd[0]);
+    if (cmd->redirect_flag) printf("\nREDIRECT TO %s", cmd->output_file);
+    // if (cmd->background_flag) printf("DO IN BACKGROUND");
+    return 1;
+}
 
 
 int main() {
+
+    // system("clear");
 
     // read line continuously
     do {
@@ -291,7 +310,6 @@ int main() {
                 buffer_size = index+DEFAULT_BUFFER_SIZE;
             }
 
-
         } while(ch != '\n');
 
         // end string
@@ -304,6 +322,7 @@ int main() {
 
         // here, read_buffer is the whole line
         split_line* line = split_str(read_buffer, " ");
+        free(read_buffer);
 
         // no input
         if (line->size == 0){
@@ -313,11 +332,11 @@ int main() {
         Expression* ast = parse_line(line, 0, line->size - 1);
         //__debug_print(ast, 0);
 
-        // eval(ast);
+        eval(ast);
 
         // once the line has been used, free memory
         destroy_expression(ast);
-        free(read_buffer);
+        free(line->content);
         free(line);
 
     } while (true);
