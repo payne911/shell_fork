@@ -220,100 +220,6 @@ int run_command(command* cmd){
 //}
 
 
-void free_split_line(split_line* line) {
-    /// To `free()` the char** and all its sub-arrays
-    free(line->content);
-    for(int i = 0; i < line->size; i++) {
-        free(line->content[i]);
-    }
-}
-
-void run_background_cmd(split_line* line, Expression* ast) {
-    line->content[line->size-1] = NULL;  // to replace the trailing '&' from the command
-
-    /* Forking. */
-    pid_t    pid;
-    if(DEBUG != 0) printf("SUB___shell: just before fork.\n");
-    pid = fork();
-
-    if (pid < 0) {
-        fprintf(stderr, "SUB___fork failed");
-
-    } else if (pid == 0) {  // child
-        if(DEBUG != 0) printf("SUB___Child executing the command.\n\n");
-        sleep(3);  // todo: remove eventually (after tests)
-
-        /* Executing the commands. */
-//                    execvp(args[0], args);
-        if(DEBUG != 0) printf("SUB___ast expression is formed\n");
-        eval(ast);
-        if(DEBUG != 0) printf("SUB___exited eval\n");
-
-        /* Child process failed. */
-        if(DEBUG != 0) printf("SUB___execvp didn't finish properly: running exit on child process\n");
-        exit(-1);  // todo: free variables?
-
-
-    } else {  // back in parent
-        free_split_line(line);  // todo: what to do with this now?
-        if(DEBUG != 0) printf("SUB___Terminating parent of the child.\n");
-    }
-
-    if(DEBUG != 0) printf("SUB___thread has been created.\n");
-}
-
-
-int count_words(char** tab) {
-    /// Counts the amount of words in the split line (parsed from input by the user).
-    int tmp = -1;
-
-    while(true) {
-        tmp++;
-        if(tab[tmp] == NULL)
-            break;
-    }
-
-    return tmp;
-}
-
-split_line* form_split_line(char** args, int wordc) {
-    split_line* sl = malloc(sizeof(split_line));
-    if(sl == NULL) return NULL;  // OOM
-    sl->content = args;
-    sl->size = wordc;
-    sl->thread_flag = ((strcmp(args[wordc-1], "&")) == 0); // find if there is a trailing '&'
-    return sl;
-}
-
-char** query_and_split_input() {
-    /// Asks for a command until a valid one is given. Ignores anything beyond first '\n'.
-    /// Calls the function that splits the command and returns the resulting array.
-
-    /* Prompting for command. */
-    printf ("shell> ");
-
-    char* input_str = NULL;
-    size_t buffer_size;
-    if (getline(&input_str, &buffer_size, stdin) == -1) {
-        if(DEBUG != 0) printf("error while trying to read line\n");
-        //free(input_str);  // todo: how to know if malloc'd ?
-        return NULL;
-    }
-    input_str[strcspn(input_str, "\n")] = 0;  // crop to first new-line    todo: \r ??  https://stackoverflow.com/a/28462221/9768291
-
-    /* Splitting the input string. */
-    char** args;
-    if ((args = split_str (input_str, " ")) == 0) {
-        if(DEBUG != 0) printf("error in split_str function: querying new command\n");
-        free(input_str);
-        return query_and_split_input();
-    } else {
-        if(DEBUG != 0) printf("split_str function finished\n");
-        free(input_str);
-        return args;
-    }
-}
-
 /**
  * from a list of words, parse it to create a abstract syntax tree
  *
@@ -322,7 +228,7 @@ char** query_and_split_input() {
  * @param end_index
  * @return
  */
-Expression* parse_line (split_line* line, int start_index, int end_index){
+Expression * parse_line (split_line* line, int start_index, int end_index) {
 
     //printf("parsing line from %d to %d\n", start_index, end_index);
 
@@ -336,16 +242,35 @@ Expression* parse_line (split_line* line, int start_index, int end_index){
 
         char* current = line->content[i];
 
+        // counting if
         if (strncmp(current, IF_TOKEN, 2) == 0){
-            if_count++;
+            if (i == start_index){
+                if_count++;
+            } else {
+                char* previous = line->content[i - 1];
+                if (strncmp(previous, IF_TOKEN, 2) == 0
+                    || strncmp(previous, DO_TOKEN, 2) == 0
+                    || strncmp(previous, AND_TOKEN, 2) == 0
+                    || strncmp(previous, OR_TOKEN, 2) == 0){
+                    if_count++;
+                }
+            }
         }
 
+        // counting do
         if (strncmp(current, DO_TOKEN, 2) == 0 && strncmp(current, DONE_TOKEN, 4) != 0){
-            do_count++;
+            // todo : check if it is a true 'do'
+            if (i != start_index && strncmp(line->content[i-1], IF_SEP, 1) == 0){
+                do_count++;
+            }
         }
 
+
+        // counting done
         if (strncmp(current, DONE_TOKEN, 4) == 0){
-            done_count++;
+            if (i != start_index && strncmp(line->content[i-1], IF_SEP, 1) == 0){
+                done_count++;
+            }
         }
 
         // outside of an if statement implies if_count == done_count
@@ -449,7 +374,7 @@ Expression* parse_line (split_line* line, int start_index, int end_index){
         return create_exp(IF_EXPRESSION, condition, statement);
     }
 
-    // there is no 'if' statement, nor logical operator. The command line is a single command.
+    // there is no 'if' statement, nor logical operator. The commnad line is a single command.
     if (if_count == 0){
         return create_cmd(line->content, start_index, end_index);
     }
@@ -458,6 +383,109 @@ Expression* parse_line (split_line* line, int start_index, int end_index){
     printf("error in parsing\n");
     return NULL;
 
+}
+
+
+void free_split_line(split_line* line) {
+    /// To `free()` the char** and all its sub-arrays
+    free(line->content);
+    printf("line sub arrays size: %d\n", line->size);
+    for(int i = 0; i < line->size; i++) {
+        printf("content[%d]: %s\n", i, line->content[i]);
+        free(line->content[i]);
+    }
+    free(line);
+}
+
+void run_background_cmd(split_line* line) {
+
+    /* To replace the trailing '&' from the command. */
+    line->content[line->size-1] = NULL;
+    Expression* ast = parse_line(line, 0, line->size - 2);
+
+    /* Forking. */
+    pid_t    pid;
+    if(DEBUG != 0) printf("SUB___shell: just before fork.\n");
+    pid = fork();
+
+    if (pid < 0) {
+        fprintf(stderr, "SUB___fork failed");
+
+    } else if (pid == 0) {  // child
+        if(DEBUG != 0) printf("SUB___Child executing the command.\n\n");
+        sleep(3);  // todo: remove eventually (after tests)
+
+        /* Executing the commands. */
+//      execvp(args[0], args);
+        if(DEBUG != 0) printf("SUB___ast expression is formed\n");
+        eval(ast);
+        if(DEBUG != 0) printf("SUB___exited eval\n");
+
+        /* Child process failed. */
+        if(DEBUG != 0) printf("SUB___execvp didn't finish properly: running exit on child process\n");
+        exit(-1);  // todo: free variables?
+
+
+    } else {  // back in parent
+        free_split_line(line);  // todo: what to do with this now?
+        destroy_expression(ast);  // todo: ensure eval has it inside (remove from here)
+
+        if(DEBUG != 0) printf("SUB___Terminating parent of the child.\n");
+    }
+
+    if(DEBUG != 0) printf("SUB___thread has been created.\n");
+}
+
+
+int count_words(char** tab) {
+    /// Counts the amount of words in the split line (parsed from input by the user).
+    int tmp = -1;
+
+    while(true) {
+        tmp++;
+        if(tab[tmp] == NULL)
+            break;
+    }
+
+    return tmp;
+}
+
+split_line* form_split_line(char** args, int wordc) {
+    split_line* sl = malloc(sizeof(split_line));
+    if(sl == NULL) return NULL;  // OOM
+    sl->content = args;
+    sl->size = wordc;
+    sl->thread_flag = ((strcmp(args[wordc-1], "&")) == 0); // find if there is a trailing '&'
+    return sl;
+}
+
+char** query_and_split_input() {
+    /// Asks for a command until a valid one is given. Ignores anything beyond first '\n'.
+    /// Calls the function that splits the command and returns the resulting array.
+
+    /* Prompting for command. */
+    printf ("shell> ");
+
+    char* input_str = NULL;
+    size_t buffer_size;
+    if (getline(&input_str, &buffer_size, stdin) == -1) {
+        if(DEBUG != 0) printf("error while trying to read line\n");
+        //free(input_str);  // todo: how to know if malloc'd ?
+        return NULL;
+    }
+    input_str[strcspn(input_str, "\n")] = 0;  // crop to first new-line    todo: \r ??  https://stackoverflow.com/a/28462221/9768291
+
+    /* Splitting the input string. */
+    char** args;
+    if ((args = split_str (input_str, " ")) == 0) {
+        if(DEBUG != 0) printf("error in split_str function: querying new command\n");
+        free(input_str);
+        return query_and_split_input();
+    } else {
+        if(DEBUG != 0) printf("split_str function finished\n");
+        free(input_str);
+        return args;
+    }
 }
 
 
@@ -518,12 +546,13 @@ int main (void) {
         } else if (strcmp(args[0], "eof") == 0) {  // home-made "exit" command
             running = false;
             int count = count_words(args);
-            split_line* line = form_split_line(args, count);
+            split_line* line = form_split_line(args, count);  // to facilitate the freeing of memory
             free_split_line(line);
             if(DEBUG != 0) printf("aborting shell\n");
         } else {
             if(DEBUG != 0) printf("shell processing new command\n");
 
+            /* Normal execution of a shell command. */
             int count = count_words(args);
             split_line* line = form_split_line(args, count);
             if(line == NULL) {  // in case an error occured: skip and ask new query
@@ -531,21 +560,20 @@ int main (void) {
                 continue;
             }
 
-            Expression* ast = parse_line(line, 0, line->size - 1);
-
             if(line->thread_flag) {
-                run_background_cmd(line, ast);
+                run_background_cmd(line);
 
             } else {
                 if(DEBUG != 0) printf("ast expression is formed\n");
+                Expression* ast = parse_line(line, 0, line->size - 1);
                 eval(ast);
+
+                destroy_expression(ast);  // todo: ensure eval has it inside (remove from here)
+                free_split_line(line);
                 if(DEBUG != 0) printf("exited eval\n");
 
 //                run_shell(args);
             }
-
-            destroy_expression(ast);  // todo: ensure eval has it inside (remove from here)
-            free(line);
 
             if(DEBUG != 0) printf("done running shell on one command\n");
         }
