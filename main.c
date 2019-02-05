@@ -32,6 +32,11 @@ problèmes connus:
  */
 #define DEBUG 0
 
+/*
+ * The "FAILED_EXECVP" value is returned by a child when `execvp` did not successfully run the command.
+ */
+#define FAILED_EXECVP 42
+
 
 typedef struct split_line {
     int size;           // size of the array
@@ -148,7 +153,7 @@ int run_command(command* cmd){
 
     if (pid < 0) {
         fprintf(stderr, "fork failed");
-        return false;
+        return false;  // todo: not necessarily what we want
 
     } else if (pid == 0) {  // child
         if(DEBUG != 0) printf("Child executing the command.\n");
@@ -168,20 +173,27 @@ int run_command(command* cmd){
 
         /* Child process failed. */
         if(DEBUG != 0) printf("execvp didn't finish properly: running exit on child process\n");
-        return false;
-        exit(-1);  // todo: free variables?
+        exit(FAILED_EXECVP);
 
 
     } else {  // back in parent
         waitpid(pid, &status, 0);  // wait for child to finish
 
-        if(WIFEXITED(status)) { if(DEBUG != 0) printf("OK: Child exited with exit status %d.\n", WEXITSTATUS(status)); }
-        else { if(DEBUG != 0) printf("ERROR: Child has not terminated correctly. Status is: %d\n", status); }
+        if(WIFEXITED(status)) {
+            if(DEBUG != 0) printf("OK: Child exited with exit status %d.\n", WEXITSTATUS(status));
 
-//        free(args);
-        if(DEBUG != 0) printf("Terminating parent of the child.\n");
+            if(WEXITSTATUS(status) == FAILED_EXECVP) {
+                if(DEBUG != 0) printf("run_command returning FALSE\n");
+                return false;  // execvp couldn't execute the command properly
+            } else {
+                if(DEBUG != 0) printf("run_command returning TRUE\n");
+                return true;  // execution went normally
+            }
 
-        return true;
+        } else {
+            if(DEBUG != 0) printf("ERROR: Child has not terminated correctly. Status is: %d\n", status);
+            return false;  // todo: not necessarily what we want
+        }
     }
 }
 
