@@ -1,7 +1,3 @@
-//
-// Created by Olivier L.-Applin on 2019-01-25.
-//
-
 #ifndef TESTSHELL_EXPRESSION_H
 #define TESTSHELL_EXPRESSION_H
 

@@ -171,7 +171,7 @@ int run_command(command* cmd){
 }
 
 
-void run_foreground_cmd(split_line *line) {
+void run_fg_cmd(split_line *line) {
     /// To execute a chain of command(s) in the foreground.
 
     /* Create and execute Syntax Tree. */
@@ -183,7 +183,7 @@ void run_foreground_cmd(split_line *line) {
     free_split_line(line);
 }
 
-void run_background_cmd(split_line* line) {
+void run_bg_cmd(split_line *line) {
     /// To execute a chain of command(s) in the background.
 
     /* To replace the trailing '&' from the command. */
@@ -275,15 +275,8 @@ void debug_free(char** args) {
     free_split_line(line);
 }
 
-
-int main (void) {
-    /// Instanciates the main shell and queries the commands. Type "eof" to exit.
-
-    fprintf (stdout, "%% ");
-    /* ¡REMPLIR-ICI! : Lire les commandes de l'utilisateur et les exécuter. */
-
-    bool running = true;
-
+void set_up_handlers() {
+    /// To set up the signal handlers.
 
     /* To reap zombie-child processes created by using '&'. */
     struct sigaction zombie_reaper;
@@ -298,6 +291,18 @@ int main (void) {
     sigemptyset(&bonus2_signal.sa_mask);
     bonus2_signal.sa_flags = SA_RESTART;
     sigaction(SIGTSTP, &bonus2_signal, NULL);
+}
+
+
+int main (void) {
+    /// Instanciates the main shell and queries the command(s).
+
+    fprintf (stdout, "%% ");
+    /* ¡REMPLIR-ICI! : Lire les commandes de l'utilisateur et les exécuter. */
+
+    /* Initial set up. */
+    bool running = true;
+    set_up_handlers();
 
     /* Our shell. */
     while(running) {
@@ -314,16 +319,16 @@ int main (void) {
         } else {
             int count = count_words(args);
             split_line* line = form_split_line(args, count);
-            if(line == NULL) {  // in case an error occured: skip and ask new query
+            if(line == NULL) {  // if an error occured: skip and ask new query
                 free_split_line(line);
                 continue;
             }
 
             /* Executing the command(s). */
             if(line->thread_flag) {
-                run_background_cmd(line);
+                run_bg_cmd(line);
             } else {
-                run_foreground_cmd(line);
+                run_fg_cmd(line);
             }
         }
     }
