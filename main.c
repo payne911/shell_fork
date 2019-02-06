@@ -188,6 +188,7 @@ void run_sequential_cmd(split_line* line) {
 void run_background_cmd(split_line* line) {
 
     /* To replace the trailing '&' from the command. */
+    free(line->content[line->size-1]);
     line->content[line->size-1] = NULL;
     Expression* ast = parse_line(line, 0, line->size - 2);
 

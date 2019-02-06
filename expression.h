@@ -574,7 +574,8 @@ void destroy_command(command* cmd_expr){
 
 void free_split_line(split_line* line) {
     for(int i = 0; i < line->size; i++) {
-        free(line->content[i]);
+        if(line->content[i] != NULL)
+            free(line->content[i]);
     }
     free(line->content);
     free(line);
