@@ -35,6 +35,11 @@ problèmes connus:
 #define FAILED_EXECVP 42
 
 
+/*
+ * Updated as the PID of the last child process created by a sequential command (no trailing '&').
+ */
+volatile pid_t CURR_CHILD;
+
 
 size_t optimizer_cnt(const char *str) {
     /// Returns min(1, #words).
@@ -128,14 +133,13 @@ int run_command(command* cmd){
 
     /* Forking. */
     int         status;
-    pid_t       pid;
-    pid = fork();
+    CURR_CHILD = fork();
 
 
-    if (pid < 0) {
+    if (CURR_CHILD < 0) {
         return false;
 
-    } else if (pid == 0) {  // child
+    } else if (CURR_CHILD == 0) {  // child
         if(DEBUG != 0) printf("Child executing the command.\n");
 
         /* Redirecting output. */
@@ -156,7 +160,7 @@ int run_command(command* cmd){
 
 
     } else {  // back in parent
-        waitpid(pid, &status, 0);  // wait for child to finish
+        waitpid(CURR_CHILD, &status, WUNTRACED);  // wait for child to finish
 
         if(WIFEXITED(status)) {
             if(DEBUG != 0) printf("OK: Child exited with exit status %d.\n", WEXITSTATUS(status));
@@ -267,32 +271,13 @@ char** query_and_split_input() {
 
 void zombie_handler(int sigNo) {
     int status;
-    pid_t child_pid;
-    while ((child_pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        /*...do something with exited child's status */
-        printf("Reaped child pid %d | exit status: %d\n", child_pid, status);
-    }
+    while ((waitpid(-1, &status, WNOHANG)) > 0)
+        ;  // always reap children
 }
 
 void ctrl_Z_handler(int sigNo) {
-    printf("Caught Ctrl-Z\n");
-
-//    /* Forking. */
-//    pid_t    pid;
-//    if(DEBUG != 0) printf("CZ___shell: just before fork.\n");
-//    pid = fork();
-//
-//    if (pid < 0) {
-//        if(DEBUG != 0) printf("CZ___Error in the creation of the child.\n");
-//
-//    } else if (pid == 0) {  // child
-//        if(DEBUG != 0) printf("CZ___Child executing the command.\n\n");
-//
-//    } else {  // back in parent
-//        if(DEBUG != 0) printf("CZ___Terminating parent of the child.\n");
-//    }
-//
-//    if(DEBUG != 0) printf("CZ___run_bg_cmd is over.\n");
+    if(CURR_CHILD != 0)  // to prevent the crash if there wasn't any child created yet
+        kill(CURR_CHILD, SIGTSTP);  // triggers the waitpid in the parent
 }
 
 
