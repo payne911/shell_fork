@@ -1,9 +1,13 @@
 /* ch.c.
 auteurs:    Jérémi Grenier-Berthiaume
             Olivier Lepage-Applin
-date:       Février 2019
+date:       8 Février 2019
 problèmes connus:
     - `optimizer_cnt` could be faster (doesn't require using `strtok`)
+    - `debug_free` is lazy: a better solution could have been used
+    - there could be even MORE error management
+    - maybe we should have written it all in French..?
+    - a few times we dared to explore beyond the almighty "80 chars" boundary
   */
 
 
@@ -22,21 +26,17 @@ problèmes connus:
  */
 #include "expression.h"
 
-/*
- * The "DEBUG" value is used to print trace of the flow of execution.
- * Any non-zero value will result in traces being printed.
- * Setting it to 0 will silence the debugging mode.
- */
-#define DEBUG 0
 
 /*
- * The "FAILED_EXECVP" value is returned by a child when `execvp` did not successfully run the command.
+ * The "FAILED_EXECVP" value is returned by a child when `execvp`
+ * did not successfully run the command.
  */
 #define FAILED_EXECVP 42
 
 
 /*
- * Updated as the PID of the last child process created by a sequential command (no trailing '&').
+ * Updated as the PID of the last child process created by a
+ * sequential command (no trailing '&').
  */
 volatile pid_t CURR_CHILD;
 
@@ -57,7 +57,7 @@ size_t optimizer_cnt(const char *str) {
 }
 
 int count_words(char** tab) {
-    /// Counts the amount of words in the split line (parsed from input by the user).
+    /// Counts the amount of words in the split line (parsed from input by user).
     int tmp = -1;
 
     while(true) {
@@ -73,7 +73,7 @@ char** split_str (const char* str, const char delim[]) {
     /// Returns a list of pointers to strings that came from splitting the input.
     /// Returns NULL in case of error.
 
-    char* copied_input = strdup(str);  // because 'strtok()' alters the string it passes through
+    char* copied_input = strdup(str);  // because 'strtok()' alters the string
     if (copied_input == 0) return NULL;  // OOM
 
     /* Counting words to optimize allocated's memory size. */
@@ -84,12 +84,10 @@ char** split_str (const char* str, const char delim[]) {
     /* Obtaining first word. */
     char* token = strtok (copied_input, delim);
     if (token == NULL) {
-        if(DEBUG != 0) printf("Bug extracting first word of split\n");
         free(result);
         free(copied_input);
         return NULL;
     } else if ((result[0] = strdup (token)) == 0) {  // OOM
-        if(DEBUG != 0) printf("Bug allocating first word of split\n");
         free(result);
         free(copied_input);
         return NULL;
@@ -101,7 +99,6 @@ char** split_str (const char* str, const char delim[]) {
         if ((result[++tmp] = strdup (token)) == 0) {
             /* In case of OOM, each past array must also be freed. */
             while (tmp-- != 0) {
-                if(DEBUG != 0) printf("Bug allocating words of split. Currently freeing index %d\n", tmp);
                 free(result[tmp]);
             }
             free(result);
@@ -117,7 +114,7 @@ char** split_str (const char* str, const char delim[]) {
 }
 
 bool writeOutputInFile(const char* output) {
-    int fileDescriptor = open(output, O_WRONLY | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+    int fileDescriptor = open(output, O_WRONLY|O_CREAT, S_IRWXU|S_IRWXG|S_IRWXO);
     if(fileDescriptor < 0) return false;            // in case of error
     if(dup2(fileDescriptor,1) < 0) return false;    // in case of error
     if(close(fileDescriptor) < 0) return false;     // in case of error
@@ -140,56 +137,54 @@ int run_command(command* cmd){
         return false;
 
     } else if (CURR_CHILD == 0) {  // child
-        if(DEBUG != 0) printf("Child executing the command.\n");
 
         /* Redirecting output. */
         if(cmd->redirect_flag) {
-            const char* filePath = cmd->output_file;  // ex: "./test_output_file.txt";
+            const char* filePath = cmd->output_file;
             bool successfulWrite = writeOutputInFile(filePath);
             if(!successfulWrite) {
                 // todo: in case of error
             }
         }
 
-        /* Executing the commands. */
+        /* Executing the command(s). */
         execvp(cmd->cmd[0], cmd->cmd);
 
         /* Child process failed. */
-        if(DEBUG != 0) printf("execvp didn't finish properly: running exit on child process\n");
         exit(FAILED_EXECVP);
 
 
     } else {  // back in parent
         waitpid(CURR_CHILD, &status, WUNTRACED);  // wait for child to finish
 
+        /* Managing the 'return status' of an evaluation. */
         if(WIFEXITED(status)) {
-            if(DEBUG != 0) printf("OK: Child exited with exit status %d.\n", WEXITSTATUS(status));
-
             if(WEXITSTATUS(status) == FAILED_EXECVP) {
-                if(DEBUG != 0) printf("run_command returning FALSE\n");
                 return false;  // execvp couldn't execute the command properly
             } else {
-                if(DEBUG != 0) printf("run_command returning TRUE\n");
-                return true;  // execution went normally
+                return true;   // execution went normally
             }
-
         } else {
-            if(DEBUG != 0) printf("ERROR: Child has not terminated correctly. Status is: %d\n", status);
             return false;
         }
     }
 }
 
 
-void run_sequential_cmd(split_line* line) {
+void run_foreground_cmd(split_line *line) {
+    /// To execute a chain of command(s) in the foreground.
+
+    /* Create and execute Syntax Tree. */
     Expression* ast = parse_line(line, 0, line->size - 1);
     eval(ast);
 
+    /* Freeing the memory. */
     destroy_expression(ast);
     free_split_line(line);
 }
 
 void run_background_cmd(split_line* line) {
+    /// To execute a chain of command(s) in the background.
 
     /* To replace the trailing '&' from the command. */
     free(line->content[line->size-1]);
@@ -198,44 +193,39 @@ void run_background_cmd(split_line* line) {
 
     /* Forking. */
     pid_t    pid;
-    if(DEBUG != 0) printf("SUB___shell: just before fork.\n");
     pid = fork();
 
     if (pid < 0) {
         free_split_line(line);
 
     } else if (pid == 0) {  // child
-        if(DEBUG != 0) printf("SUB___Child executing the command.\n\n");
 
-        /* Executing the commands. */
-        if(DEBUG != 0) printf("SUB___ast expression is formed\n");
+        // todo: if "cat" or "vi", stop process ?
+
+        /* Executing the command(s). */
         eval(ast);
-        if(DEBUG != 0) printf("SUB___exited eval\n");
 
         /* Child process failed. */
-        if(DEBUG != 0) printf("SUB___execvp didn't finish properly: running exit on child process\n");
         free_split_line(line);
         destroy_expression(ast);
         exit(-1);
 
 
     } else {  // back in parent
+        /* Freeing memory. */
         free_split_line(line);
         destroy_expression(ast);
-
-        if(DEBUG != 0) printf("SUB___Terminating parent of the child.\n");
     }
-
-    if(DEBUG != 0) printf("SUB___run_bg_cmd is over.\n");
 }
 
 split_line* form_split_line(char** args, int wordc) {
-    /// Properly sets up a "SplitLine" struct with the char** obtained from the query.
+    /// Properly sets up a "SplitLine" struct with the char** obtained from query.
+
     split_line* sl = malloc(sizeof(split_line));
     if(sl == NULL) return NULL;  // OOM
     sl->content = args;
     sl->size = wordc;
-    sl->thread_flag = ((strcmp(args[wordc-1], "&")) == 0); // find if there is a trailing '&'
+    sl->thread_flag = ((strcmp(args[wordc-1], "&")) == 0); // find trailing '&'
     return sl;
 }
 
@@ -249,20 +239,17 @@ char** query_and_split_input() {
     char* input_str = NULL;
     size_t buffer_size;
     if (getline(&input_str, &buffer_size, stdin) == -1) {
-        if(DEBUG != 0) printf("QUERY____error while trying to read line\n");
         free(input_str);
         return NULL;
     }
-    input_str[strcspn(input_str, "\n")] = 0;  // crop to first new-line    todo: \r ??  https://stackoverflow.com/a/28462221/9768291
+    input_str[strcspn(input_str, "\n")] = 0;  // crop to first new-line
 
     /* Splitting the input string. */
     char** args;
     if ((args = split_str (input_str, " ")) == 0) {
-        if(DEBUG != 0) printf("QUERY____error in split_str function: querying new command\n");
         free(input_str);
         return query_and_split_input();
     } else {
-        if(DEBUG != 0) printf("QUERY____split_str function finished\n");
         free(input_str);
         return args;
     }
@@ -276,8 +263,16 @@ void zombie_handler(int sigNo) {
 }
 
 void ctrl_Z_handler(int sigNo) {
-    if(CURR_CHILD != 0)  // to prevent the crash if there wasn't any child created yet
+    if(CURR_CHILD != 0)  // prevents crash if there wasn't any child created yet
         kill(CURR_CHILD, SIGTSTP);  // triggers the waitpid in the parent
+}
+
+void debug_free(char** args) {
+    /// Lazy function to ensure `args` is freed properly.
+
+    int count = count_words(args);
+    split_line* line = form_split_line(args, count);
+    free_split_line(line);
 }
 
 
@@ -310,18 +305,13 @@ int main (void) {
         /* Ask for an instruction. */
         char** args = query_and_split_input();
 
-        /* Error handling  |  exit  |  set up. */
+        /* Error handling  |  exit  |  cat  |  set up. */
         if (args == NULL) {  // error while reading input
             running = false;
-            if(DEBUG != 0) printf("error while reading line: aborting shell\n");
-        } else if (strcmp(args[0], "eof") == 0) {  // home-made "exit" command
+        } else if (strcmp(args[0], "exit") == 0) {  // home-made "exit" command
             running = false;
-            int count = count_words(args);
-            split_line* line = form_split_line(args, count);  // to facilitate the freeing of memory
-            free_split_line(line);
-            if(DEBUG != 0) printf("exit command detected\n");
+            debug_free(args);
         } else {
-            if(DEBUG != 0) printf("shell processing new command\n");
             int count = count_words(args);
             split_line* line = form_split_line(args, count);
             if(line == NULL) {  // in case an error occured: skip and ask new query
@@ -329,18 +319,12 @@ int main (void) {
                 continue;
             }
 
-            /* Executing the commands. */
+            /* Executing the command(s). */
             if(line->thread_flag) {
-                if(DEBUG != 0) printf("before bg cmd\n");
                 run_background_cmd(line);
-                if(DEBUG != 0) printf("after bg cmd\n");
             } else {
-                if(DEBUG != 0) printf("before seq cmd\n");
-                run_sequential_cmd(line);
-                if(DEBUG != 0) printf("after seq cmd\n");
+                run_foreground_cmd(line);
             }
-
-            if(DEBUG != 0) printf("done running shell on one command\n");
         }
     }
 
