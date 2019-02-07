@@ -155,12 +155,10 @@ int run_command(Command* cmd) {
         waitpid(CURR_CHILD, &status, WUNTRACED);  // wait for child to finish
 
         /* Managing the 'return status' of an evaluation. */
-        if(WIFEXITED(status)) {
-            if(WEXITSTATUS(status) == FAILED_EXECVP) {
-                return false;  // execvp couldn't execute the command properly
-            } else {
-                return true;   // execution went normally
-            }
+        if(WEXITSTATUS(status) == FAILED_EXECVP) {
+            return false;  // execvp couldn't execute the command properly
+        } else if (status == 0) {
+            return true;
         } else {
             return false;
         }
