@@ -38,7 +38,7 @@ problèmes connus:
  * Updated as the PID of the last child process created by a
  * sequential command (no trailing '&').
  */
-volatile pid_t CURR_CHILD;
+volatile pid_t CURR_CHILD = 0;
 
 
 size_t optimizer_cnt(const char *str) {
@@ -115,9 +115,9 @@ char** split_str (const char* str, const char delim[]) {
 
 bool writeOutputInFile(const char* output) {
     int fileDescriptor = open(output,O_WRONLY|O_CREAT, S_IRWXU|S_IRWXG|S_IRWXO);
-    if (fileDescriptor < 0) return false;            // in case of error
+    if (fileDescriptor < 0)         return false;    // in case of error
     if (dup2(fileDescriptor,1) < 0) return false;    // in case of error
-    if (close(fileDescriptor) < 0) return false;     // in case of error
+    if (close(fileDescriptor) < 0)  return false;    // in case of error
     return true;
 }
 
@@ -128,12 +128,12 @@ int run_command(Command* cmd) {
     /* Forking. */
     int         status;
     CURR_CHILD = fork();
-    printf("CURR_CHILD = %d", CURR_CHILD);
 
     if (CURR_CHILD < 0) {
         return false;
 
     } else if (CURR_CHILD == 0) {  // child
+        signal(SIGTSTP, SIG_IGN);  // prevent Cltr-Z triggers in child
 
         /* Redirecting output. */
         if(cmd->redirect_flag) {
@@ -196,8 +196,9 @@ void run_bg_cmd(Split_line *line) {
         free_split_line(line);
 
     } else if (pid == 0) {  // child
+        signal(SIGTSTP, SIG_IGN);  // prevent Cltr-Z triggers in child
 
-        // todo: if "cat" or "vi", stop process ?
+        // todo: if "cat" or "vi", stop process ? (bonus 1)
 
         /* Executing the command(s). */
         eval(ast);
@@ -232,7 +233,7 @@ char** query_and_split_input() {
     /// Returns the array resulting from splitting the input.
 
     /* Prompting for command. */
-    printf ("shell> ");
+    printf ("\nshell> ");
 
     char* input_str = NULL;
     size_t buffer_size;
@@ -266,7 +267,7 @@ void ctrl_Z_handler(int sigNo) {
     /// Stops the process identified by the CURR_CHILD pid.
 
     if(CURR_CHILD != 0)  // prevents crash if there wasn't any child created yet
-        kill(CURR_CHILD, SIGTSTP);  // triggers the waitpid in the parent
+        kill(CURR_CHILD, SIGSTOP);  // triggers the waitpid in the parent
 }
 
 void debug_free(char** args) {

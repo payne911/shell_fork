@@ -190,7 +190,7 @@ Expression * create_cmd (char** line, int start_index, int end_index){
                 || strncmp (next, DONE_TOKEN, 4) == 0
                 || next == IF_SEP
                 || next == REDIRECT_SEPERATOR)){
-                    printf("no output file. Redirect kept on %s", 
+                    printf("No output file. Redirect kept on %s.\n",
                                                 e->node.cmd_expr->output_file);
                     return e;
             } else {
@@ -215,7 +215,7 @@ Expression * create_cmd (char** line, int start_index, int end_index){
                 || strncmp (next, DONE_TOKEN, 4)     == 0
                 || next == IF_SEP
                 || next == REDIRECT_SEPERATOR){
-                    printf("no output file. Redirect on %s ignored\n", 
+                    printf("No output file. Redirect on %s ignored\n",
                                                             line[start_index]);
                     // realloc a smaller memory 
                     char ** tmp = realloc(e->node.cmd_expr->cmd, 
@@ -433,7 +433,7 @@ Expression * parse_line (Split_line* line, int start_index, int end_index) {
     }
 
     // error in parsing
-    printf("error in parsing\n");
+    printf("Error in parsing.\n");
     return NULL;
 
 }
