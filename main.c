@@ -374,7 +374,7 @@ int main (void) {
         /* Ask for an instruction. */
         char** args = query_and_split_input();
 
-        /* Error handling  |  exit  |  cat  |  set up. */
+        /* Error handling  |  exit  |  set up. */
         if (args == NULL) {  // error while reading input
             running = false;
         } else if (strcmp(args[0], "exit") == 0) {  // home-made "exit" command
