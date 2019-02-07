@@ -3,11 +3,11 @@ auteurs:    Jérémi Grenier-Berthiaume
             Olivier Lepage-Applin
 date:       8 Février 2019
 problèmes connus:
-    - `optimizer_cnt` could be faster (doesn't require using `strtok`)
+    - `optimizer_cnt` is lazy: a solution that wouldn't use strtok is possible
     - `debug_free` is lazy: a better solution could have been used
     - there could be even MORE error management
     - maybe we should have written it all in French..?
-    - a few times we dared to explore beyond the almighty "80 chars" boundary
+    - two lines dared to adventure beyond the almighty 80-chars-boundary
   */
 
 
@@ -79,7 +79,7 @@ char** split_str (const char* str, const char delim[]) {
     /* Counting words to optimize allocated's memory size. */
     size_t nwords = optimizer_cnt(copied_input);
     char** result;
-    if ((result = malloc((nwords+1) * sizeof(char *))) == 0) return NULL;  // OOM
+    if ((result = malloc((nwords+1) * sizeof(char *))) == 0) return NULL; // OOM
 
     /* Obtaining first word. */
     char* token = strtok (copied_input, delim);
@@ -114,24 +114,21 @@ char** split_str (const char* str, const char delim[]) {
 }
 
 bool writeOutputInFile(const char* output) {
-    int fileDescriptor = open(output, O_WRONLY|O_CREAT, S_IRWXU|S_IRWXG|S_IRWXO);
-    if(fileDescriptor < 0) return false;            // in case of error
-    if(dup2(fileDescriptor,1) < 0) return false;    // in case of error
-    if(close(fileDescriptor) < 0) return false;     // in case of error
+    int fileDescriptor = open(output,O_WRONLY|O_CREAT, S_IRWXU|S_IRWXG|S_IRWXO);
+    if (fileDescriptor < 0) return false;            // in case of error
+    if (dup2(fileDescriptor,1) < 0) return false;    // in case of error
+    if (close(fileDescriptor) < 0) return false;     // in case of error
     return true;
 }
 
-/**
- * run a command line
- * @param command
- * @return
- */
-int run_command(command* cmd){
+
+int run_command(Command* cmd) {
+    /// Called throughout the recursion that evaluates every single command.
 
     /* Forking. */
     int         status;
     CURR_CHILD = fork();
-
+    printf("CURR_CHILD = %d", CURR_CHILD);
 
     if (CURR_CHILD < 0) {
         return false;
@@ -171,19 +168,19 @@ int run_command(command* cmd){
 }
 
 
-void run_fg_cmd(split_line *line) {
+void run_fg_cmd(Split_line *line) {
     /// To execute a chain of command(s) in the foreground.
 
     /* Create and execute Syntax Tree. */
-    Expression* ast = parse_line(line, 0, line->size - 1);
-    eval(ast);
+    Expression* ast_root = parse_line(line, 0, line->size - 1);
+    eval(ast_root);
 
     /* Freeing the memory. */
-    destroy_expression(ast);
+    destroy_expression(ast_root);
     free_split_line(line);
 }
 
-void run_bg_cmd(split_line *line) {
+void run_bg_cmd(Split_line *line) {
     /// To execute a chain of command(s) in the background.
 
     /* To replace the trailing '&' from the command. */
@@ -195,7 +192,7 @@ void run_bg_cmd(split_line *line) {
     pid_t    pid;
     pid = fork();
 
-    if (pid < 0) {
+    if (pid < 0) {  // error while forking
         free_split_line(line);
 
     } else if (pid == 0) {  // child
@@ -212,16 +209,17 @@ void run_bg_cmd(split_line *line) {
 
 
     } else {  // back in parent
+
         /* Freeing memory. */
         free_split_line(line);
         destroy_expression(ast);
     }
 }
 
-split_line* form_split_line(char** args, int wordc) {
-    /// Properly sets up a "SplitLine" struct with the char** obtained from query.
+Split_line* form_split_line(char** args, int wordc) {
+    /// Properly sets up a `Split_line` with the char** obtained from query.
 
-    split_line* sl = malloc(sizeof(split_line));
+    Split_line* sl = malloc(sizeof(Split_line));
     if(sl == NULL) return NULL;  // OOM
     sl->content = args;
     sl->size = wordc;
@@ -230,8 +228,8 @@ split_line* form_split_line(char** args, int wordc) {
 }
 
 char** query_and_split_input() {
-    /// Asks for a command until a valid one is given. Ignores anything beyond first '\n'.
-    /// Calls the function that splits the command and returns the resulting array.
+    /// Asks for a command. Ignores anything beyond first '\n'.
+    /// Returns the array resulting from splitting the input.
 
     /* Prompting for command. */
     printf ("shell> ");
@@ -257,12 +255,16 @@ char** query_and_split_input() {
 
 
 void zombie_handler(int sigNo) {
+    /// Reaps the processes it receives signals from.
+
     int status;
     while ((waitpid(-1, &status, WNOHANG)) > 0)
         ;  // always reap children
 }
 
 void ctrl_Z_handler(int sigNo) {
+    /// Stops the process identified by the CURR_CHILD pid.
+
     if(CURR_CHILD != 0)  // prevents crash if there wasn't any child created yet
         kill(CURR_CHILD, SIGTSTP);  // triggers the waitpid in the parent
 }
@@ -271,14 +273,14 @@ void debug_free(char** args) {
     /// Lazy function to ensure `args` is freed properly.
 
     int count = count_words(args);
-    split_line* line = form_split_line(args, count);
+    Split_line* line = form_split_line(args, count);
     free_split_line(line);
 }
 
 void set_up_handlers() {
     /// To set up the signal handlers.
 
-    /* To reap zombie-child processes created by using '&'. */
+    /* To reap zombie-child processes. */
     struct sigaction zombie_reaper;
     zombie_reaper.sa_handler = &zombie_handler;
     sigemptyset(&zombie_reaper.sa_mask);
@@ -318,7 +320,7 @@ int main (void) {
             debug_free(args);
         } else {
             int count = count_words(args);
-            split_line* line = form_split_line(args, count);
+            Split_line* line = form_split_line(args, count);
             if(line == NULL) {  // if an error occured: skip and ask new query
                 free_split_line(line);
                 continue;

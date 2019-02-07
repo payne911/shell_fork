@@ -53,25 +53,25 @@ typedef enum {COMMAND, IF_EXPRESSION, OR_EXPRESSION, AND_EXPRESSION} exp_type;
 /**
  * Wrapper around a single command to be executed. Contains an array
  * of word in the correct structure for a call to exec() and optional 
- * information about the redirect ourput file.
+ * information about the redirect output file.
  * */
-typedef struct command {
-    char**  cmd;
-    bool redirect_flag;
-    char* output_file;
-} command;
+typedef struct Command {
+    char**  cmd;            // a command
+    bool    redirect_flag;  // if '>' exists
+    char*   output_file;    // name of the file
+} Command;
 
 
 /**
  * Wrapper around a whole command line. Contains the number of words 
- * (split by spaces) and the conditionnal background flag to execute
- * the whole line as a background task
+ * (split by spaces) and the conditional background flag to execute
+ * the whole line as a background task.
  * */
-typedef struct split_line {
-    int size;           // size of the array
-    char** content;     // array of words
-    bool thread_flag;   // if '&' at the end
-} split_line;
+typedef struct Split_line {
+    int     size;           // size of the array
+    char**  content;        // array of words
+    bool    thread_flag;    // if '&' at the end
+} Split_line;
 
 
 /**
@@ -81,7 +81,7 @@ typedef struct split_line {
 typedef struct Expression {
     exp_type                                            id;
     union {
-        command*                                        cmd_expr;
+        Command*                                        cmd_expr;
         struct {
             struct Expression*      left;
             struct Expression*      right;
@@ -100,17 +100,17 @@ typedef struct Expression {
 
 Expression* create_exp   (exp_type type, Expression* first, Expression* second);
 Expression* create_cmd   (char** line, int start_index, int end_index);
-Expression* parse_line   (split_line* line, int start_index, int end_index);
+Expression* parse_line   (Split_line* line, int start_index, int end_index);
 
-int run_command          (command* cmd);
+int run_command          (Command* cmd);
 
 int eval                 (Expression* exp);
 int or_eval              (Expression* exp);
 int and_eval             (Expression* exp);
 
-void destroy_command     (command* cmd);
+void destroy_command     (Command* cmd);
 void destroy_expression  (Expression* e);
-void free_split_line     (split_line* line);
+void free_split_line     (Split_line* line);
 
 
 
@@ -127,7 +127,7 @@ void free_split_line     (split_line* line);
 /**
  * Creates a command struct that represent a single system call to be 
  * executed. That struct contains the array that the exec() call needs and 
- * other usefull information for executing the command.
+ * other useful information for executing the command.
  * @param   start_index     the index of the first word of the command to 
  *                          be created in the command line.
  * @param   end_index       the index of the first word of the command to 
@@ -154,7 +154,7 @@ Expression * create_cmd (char** line, int start_index, int end_index){
 
     e->id = COMMAND;
 
-    e->node.cmd_expr = malloc(sizeof(command));
+    e->node.cmd_expr = malloc(sizeof(Command));
     if (e->node.cmd_expr == NULL){
         free(e);
         perror("malloc error create_cmd");
@@ -261,7 +261,7 @@ Expression * create_cmd (char** line, int start_index, int end_index){
 
 
 /**
- * Creates nodes of the syntax tree based on what words are located whithin
+ * Creates nodes of the syntax tree based on what words are located within
  * the start_index and end_index.
  * 
  * @param   start_index     the index of the first word of the command line 
@@ -269,13 +269,13 @@ Expression * create_cmd (char** line, int start_index, int end_index){
  * @param   end_index       the index of the last word of the command line 
  *                          to parse
  * @param   split_line      an array of word containing each individual 
- *                          statement (word seoerated by spaces) of 
+ *                          statement (word seperated by spaces) of
  *                          the command line
- * @return  an Expression representation of the commad to execute. It is
+ * @return  an Expression representation of the command to execute. It is
  *          a single node in the Abstract Syntax Tree that is created. 
  * 
  * */
-Expression * parse_line (split_line* line, int start_index, int end_index) {
+Expression * parse_line (Split_line* line, int start_index, int end_index) {
 
     //printf("parsing line from %d to %d\n", start_index, end_index);
 
@@ -562,13 +562,13 @@ void destroy_expression (Expression* e){
 }
 
 
-void destroy_command(command* cmd_expr){
+void destroy_command(Command* cmd_expr){
     free(cmd_expr->cmd);
     free(cmd_expr);
 }
 
 
-void free_split_line(split_line* line) {
+void free_split_line(Split_line* line) {
     for(int i = 0; i < line->size; i++) {
         if(line->content[i] != NULL)
             free(line->content[i]);
