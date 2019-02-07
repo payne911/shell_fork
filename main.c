@@ -231,7 +231,7 @@ char** query_and_split_input() {
     /// Returns the array resulting from splitting the input.
 
     /* Prompting for command. */
-    printf ("\nshell> ");
+    printf ("\nshell> ");  // `\n` to ensure the printf-buffer is emptied
 
     char* input_str = NULL;
     size_t buffer_size;
