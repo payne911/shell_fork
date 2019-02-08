@@ -6,8 +6,6 @@
 
 
 
-
-
 /* ********************************************************
  * GLOBAL DEFINITIONS
  * ****************************************************** */
@@ -195,7 +193,7 @@ Expression * create_cmd (char** line, int start_index, int end_index){
                     return e;
             } else {
                 if (strncmp(current, REDIRECT_SEPERATOR, 1)==0 && next != NULL){
-                    printf("dest : %s\n", next);
+                    //printf("dest : %s\n", next);
                     e->node.cmd_expr->output_file=next;
                 }
             }
@@ -261,7 +259,7 @@ Expression * create_cmd (char** line, int start_index, int end_index){
 
 
 /**
- * Creates nodes of the syntax tree based on what words are located within
+ * Creates nodes of the syntax tree based on what words are located whithin
  * the start_index and end_index.
  * 
  * @param   start_index     the index of the first word of the command line 
@@ -269,15 +267,19 @@ Expression * create_cmd (char** line, int start_index, int end_index){
  * @param   end_index       the index of the last word of the command line 
  *                          to parse
  * @param   split_line      an array of word containing each individual 
- *                          statement (word seperated by spaces) of
+ *                          statement (word seoerated by spaces) of 
  *                          the command line
- * @return  an Expression representation of the command to execute. It is
+ * @return  an Expression representation of the commad to execute. It is
  *          a single node in the Abstract Syntax Tree that is created. 
  * 
  * */
 Expression * parse_line (Split_line* line, int start_index, int end_index) {
 
-    //printf("parsing line from %d to %d\n", start_index, end_index);
+    // printf("parsing line from %d to %d\n", start_index, end_index);
+
+    if (start_index<0||end_index<0){
+        return NULL;
+    }
 
     int if_count = 0;
     int do_count = 0;
@@ -298,7 +300,7 @@ Expression * parse_line (Split_line* line, int start_index, int end_index) {
                 if (strncmp(previous, IF_TOKEN, 2) == 0  || 
                     strncmp(previous, DO_TOKEN, 2) == 0  || 
                     strncmp(previous, AND_TOKEN, 2) == 0 || 
-                    strncmp(previous, OR_TOKEN, 2) == 0){
+                    strncmp(previous, OR_TOKEN, 2) == 0) {
                     if_count++;
                 }
             }
@@ -316,18 +318,18 @@ Expression * parse_line (Split_line* line, int start_index, int end_index) {
 
 
         // counting done
-        if (strncmp(current, DONE_TOKEN, 4) == 0){
-            if (i != start_index && 
-                strncmp(line->content[i-1], IF_SEP, 1) == 0){
-                done_count++;
-            }
+        if (strncmp(current, DO_TOKEN, 2) == 0 && 
+            strlen(current) == 2 &&
+            strncmp(line->content[i-1], IF_SEP, 1) == 0) {
+            done_count++;
         }
+
 
         // outside of an if statement implies if_count == done_count
 
         // the 'and' token at 'i' is the root
         if (strncmp(current, AND_TOKEN, 3) == 0 && if_count == done_count){
-            //printf("the \'AND\' token at %d is the root\n", i);
+            // printf("the \'AND\' token at %d is the root\n", i);
             Expression* left = parse_line(line, start_index, i - 1);
             if (left == NULL){
                 return NULL;
@@ -343,7 +345,7 @@ Expression * parse_line (Split_line* line, int start_index, int end_index) {
 
         // the 'or' token at 'i' is the root
         if (strncmp(current, OR_TOKEN, 2) == 0 && if_count == done_count){
-            //printf("the \'OR\' token at %d is the root\n", i);
+            // printf("the \'OR\' token at %d is the root\n", i);
             Expression* left = parse_line(line, start_index, i - 1);
             if (left == NULL){
                 return NULL;
@@ -362,15 +364,13 @@ Expression * parse_line (Split_line* line, int start_index, int end_index) {
 
     // error if statement
     if ((if_count != 0 || do_count != 0 || done_count != 0) && 
-        ((if_count != do_count) && (if_count != done_count))){
-        printf("error in parsing if statement (if:%d, do:%d, done:%d)\n", 
-            if_count, do_count, done_count);
+        ((if_count != do_count) || (if_count != done_count))){
+        printf("error in parsing if statement\n");
         return NULL;
     }
 
     // here, the root of the AST is the 'if' statement at the beginning of the
     if (if_count != 0 && if_count == done_count){
-        //printf("the \'IF\' token at %d is the root\n", start_index);
 
         // inside an if statement.
         // Need to separate the 'if' and 'do' statements
@@ -382,19 +382,25 @@ Expression * parse_line (Split_line* line, int start_index, int end_index) {
         int done_index = INVALID_INDEX;
         bool do_found = false;
 
-        for (int j = start_index; j < end_index; ++j){
+        for (int j = start_index; j <= end_index; ++j){
 
             char* current = line->content[j];
-
-            if (strncmp(current, IF_TOKEN, 2) == 0){
+            // printf("checking for ifs [%s]\n", current);
+            if (strncmp(current, IF_TOKEN, 2) == 0 &&
+                strlen(current) == 2){
                 if_count++;
             }
 
-            if (strncmp(current, DO_TOKEN, 2) == 0){
+            if (strncmp(current, DO_TOKEN, 2) == 0 && 
+                strlen(current) == 2 &&
+                strncmp(line->content[j-1], IF_SEP, 1) == 0
+                ){
                 do_count++;
             }
 
-            if (strncmp(current, DONE_TOKEN, 4) == 0){
+            if (strncmp(current, DONE_TOKEN, 4) == 0 &&
+                strlen(current) == 4 &&
+                strncmp(line->content[j-1], IF_SEP, 1) == 0){
                 done_count++;
             }
 
@@ -408,8 +414,6 @@ Expression * parse_line (Split_line* line, int start_index, int end_index) {
             }
 
         }
-
-        //printf("if : %d, do : %d\n", start_index, do_index);
 
         // if :
         Expression *condition = parse_line(line, start_index + 1, do_index - 1);
@@ -433,10 +437,11 @@ Expression * parse_line (Split_line* line, int start_index, int end_index) {
     }
 
     // error in parsing
-    printf("Error in parsing.\n");
+    printf("error in parsing \n");
     return NULL;
 
 }
+
 
 
 
