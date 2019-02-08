@@ -473,20 +473,24 @@ Expression * parse_line (Split_line* line, int start_index, int end_index) {
  * 
  * */
 int eval (Expression* exp){
-    switch (exp->id){
-        case IF_EXPRESSION :
-            if (eval(exp->node.cond_expr.left)){
-                return eval(exp->node.cond_expr.right);
-            } else {
-                // failure of the conditional statement is considered a 
-                // successful if statement
-                return true; // success
-            }
-        case COMMAND:            return run_command(exp->node.cmd_expr);
-        case OR_EXPRESSION:      return or_eval(exp);
-        case AND_EXPRESSION:     return and_eval(exp);
-        default:                 return -1;
-    }
+  if (exp == NULL){
+    return false;
+  }
+  
+  switch (exp->id){
+      case IF_EXPRESSION :
+          if (eval(exp->node.cond_expr.left)){
+              return eval(exp->node.cond_expr.right);
+          } else {
+              // failure of the conditional statement is considered a 
+              // successful if statement
+              return true; // success
+          }
+      case COMMAND:            return run_command(exp->node.cmd_expr);
+      case OR_EXPRESSION:      return or_eval(exp);
+      case AND_EXPRESSION:     return and_eval(exp);
+      default:                 return -1;
+  }
 }
 
 
