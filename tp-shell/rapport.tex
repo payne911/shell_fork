@@ -47,8 +47,12 @@ Une gestion de la mémoire adéquate a été un soucis constant lors de la progr
 
 \section{Nota Bene}
 
-Finalement, puisqu'il semblerait qu'il faut mentionner cela: les opérateurs et décorateurs doivent être entourés d'un espace pour être correctement reconnus.
+Puisqu'il semblerait qu'il faut mentionner cela: les opérateurs et décorateurs doivent être entourés d'un espace pour être correctement reconnus.
 
-De plus, nous ne supportons pas le `\texttt{;}` qui pourrait séparer différentes expressions.
+De plus, nous ne supportons pas le `\texttt{;}` qui pourrait séparer différentes expressions. Aussi, s'il y a des `\texttt{>}` consécutifs, seul le dernier est pris en compte.
+
+Vous pouvez aussi mettre fin au programme: toute ligne dont le premier mot est `\texttt{exit}` aura un tel effet.
+
+Finalement, une simple remarque: le \textit{reaper} ne s'occupe que des processus qui ont bel et bien terminés (ceux arrêtés ne seront pas touchés). Il s'en occupera même après que le programme soit arrêté (les processus en arrière-plan qui n'ont pas eu le temps de terminer se termineront comme prévu même après la fin du programme).
 
 \end{document}
