@@ -176,11 +176,6 @@ char** split_str (const char* str, const char delim[]) {
     return result;
 }
 
-
-/*
- * Memory management.
- */
-
 void debug_free(char** args) {
     /// Lazy function to ensure `args` is freed properly.
 
