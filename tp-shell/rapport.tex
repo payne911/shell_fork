@@ -3,12 +3,52 @@
 \usepackage[utf8]{inputenc}
 
 \title{Travail pratique \#1 - IFT-2245}
-\author{Moi et L'autre}
+\author{Jérémi Grenier-Berthiaume et Olivier Lepage-Applin}
 
 \begin{document}
 
 \maketitle
 
-%% ¡¡ REMPLIR ICI !!
+\section{Général}
+
+Pour toutes les parties du travail, il a fallu lire énormément de documentation et faire beaucoup de recherches. De plus, il aurait été pertinent de mentionner en classe que si on utilise des traces de \texttt{printf()} pour le débogage (une pratique assez courante) il faut s'assurer d'ajouter un `\texttt{\textbackslash n}` à la fin de la ligne imprimée pour causer l'affichage immédiat du contenu (car ça utilise en fait un \textit{buffer} qui ne se vide pas à chaque appel). Nous ne nous attendions pas à un tel comportement et donc avons perdu beaucoup de temps au début du projet à chercher la source d'un problème au mauvais endroit.\newline
+
+\section{Le Travail Pratique}
+
+Pour la première partie, concernant l'ébauche de la structure de base d'un \textit{shell}, nous avons décidé d'utiliser la structure suivante: initialisation, boucle \texttt{while} sur un  booléen, puis terminaison.
+
+La boucle s'occupe de gérer les commandes entrées par l'utilisateur et leur exécution. Les étapes sont: demande de requête, \textit{parsing}, gestion de cas spéciaux (\textit{error handling} et \textit{exit}), puis exécution.\newline
+
+Pour l'exécution de base (\textbf{Q2.1}), nous avons décidé d'utiliser \texttt{execvp} (dans l'enfant, suite à un \texttt{fork()}, bien entendu) puisque l'utilisation d'un tableau (de taille arbitraire) de \textit{strings} est alors facilité: il suffit simplement de s'assurer que le tout se termine par une chaîne \texttt{NULL}. Ainsi, cela veut aussi dire que nous avons une fonction (\texttt{split\_str(...)}) qui s'occupe de découper un tableau de caractère(s) en un tableau de tableau(x) de caractère(s) (\texttt{char**}) en utilisant l'\texttt{espace} comme délimiteur.\newline
+
+Pour la \textbf{Q2.2}, nous avons d'abord pensé à utiliser une liste chaînée, mais nous avons finalement opté pour un \textbf{Arbre de Syntaxe Abstrait} puisque cela semblait être une bonne idée pour si jamais on voulait augmenter la capacité de notre \textit{shell}. La création de l'arbre ainsi que l'évaluation (exécution des commandes avec la fonction \texttt{run\_command(...)}) se font donc de manière récursive. Trivialement, l'intégration du support d'une commande `\texttt{if}` (\textbf{Q2.3}) était donc fortement facilitée.
+
+Suite à l'intégration de l'arbre de syntaxe, l'exécution des commandes se devait alors de suivre un certain ordre: création de l'arbre à partir de la requête de l'utilisateur (\texttt{Expression* ast = parse\_line(...)}), suivi du lancement de son évaluation (\texttt{eval(ast)}). Finalement, pour bien faire les choses, il fallait correctement libérer l'espace mémoire utilisé (avec \texttt{free\_split\_line(...)} et \texttt{destroy\_expression(ast)}). Les mécanismes internes de notre arbre de syntaxe sont décrits plus en profondeur dans la prochaine section.\newline
+
+Pour la \textbf{Q2.4}, l'intégration du `\texttt{>}` a été relativement facile: durant la création de l'arbre de syntaxe, chaque commande pouvait avoir le \textit{flag} (un booléen) \texttt{redirect\_flag} qui indiquait qu'à l'exécution une conditionnelle allait s'activer et rediriger correctement le \texttt{stdout} avec \texttt{dup2(...)}.
+
+L'intégration du `\texttt{\&}` revenait, pour sa part, à l'utilisation d'un \textit{flag} \texttt{thread\_flag} qui est initialisé \underline{avant} la génération de l'arbre de syntaxe (car ça concerne la ligne complète). L'exécution est légèrement modifiée lorsque ce \textit{flag} est détecté: c'est alors \texttt{run\_bg\_cmd(...)} qui est appelé. Cette fonction s'occupe de remplacer l'éperluette par un \texttt{NULL} pour ensuite faire un \texttt{fork()} (il y a donc bel et bien un \texttt{fork()} supplémentaire lorsque l'utilisateur désire faire exécuter une commande en arrière-plan). Le point important est alors que le parent n'a aucune instruction lui indiquant d'attendre l'enfant, ce qui permet de continuer l'exécution normale du programme.
+
+De plus, puisque nous avons alors des enfants qui ne seront plus attendus, pour s'empêcher d'être pris avec des \textit{zombies}, un \textit{signal handler} sur \texttt{SIGCHLD} est utilisé pour déclencher le \textit{reaper} quand possible (quand le \texttt{waitpid(-1, \&status, WNOHANG)} trouve un enfant orphelin, il le tue).\newline
+
+Pour le \textbf{Bonus 2}, il suffisait de mettre en place une variable globale contenant le pid du dernier enfant créé par une exécution en foreground. Ainsi, après avoir initialisé un \textit{signal handler} sur \texttt{SIGTSTP} (ce qui permet de détecter lorsque \texttt{Ctrl+Z} est appuyé), on peut simplement envoyer un signal \texttt{SIGSTOP} à cet enfant. Puisque le \texttt{waitpid} du parent a été modifié pour contenir le \textit{flag} \texttt{WUNTRACED}, le parent est débloqué lorsque le signal mentionné est renvoyé par l'enfant. Avec tout cela, on se retrouve alors avec un processus qui a été mis en arrière-plan et l'utilisateur peut de nouveau entrer une commande.
+
+Cependant, il aura aussi fallu s'assurer que les enfants n'héritent pas du \textit{signal handler} qui a été imposé au parent (le \texttt{fork()} réplique effectivement ce comportement aux enfants): cela a été fait en réassignant le même signal à \texttt{SIG\_IGN} pour les enfants.\newline
+
+\section{Arbre de Syntaxe Abstrait}
+
+Afin d'exécuter les commandes de manière adéquate, chaque ligne entrée par l'utilisateur dans le \textit{shell} doit être analysée. Cette analyse syntaxique permet de s'assurer que les commandes respectent les règles des différentes expressions que le \textit{shell} doit supporter : \texttt{if ... then ..., or (||)} et \texttt{and (\&\&)}. Afin de supporter les expressions impbriquées les unes dans les autres, la solution choisie a été de construire un arbre de syntaxe pour chaque ligne. Une \texttt{struct} a été créée afin de contenir cette structure de donnée unique : \texttt{Expression}. Une expression contient soit un \texttt{union} qui peut-être soit une commade unique, un \texttt{if}, un \texttt{or} ou un \texttt{and} ainsi qu'un identifiant pour différencier lequel de ces types est contenu dans le \texttt{union}. L'exécution de la ligne de commande se fait donc en deux étapes : 1) la construction de l'arbre et 2) l'évaluation de chaque noeud de l'arbre.\newline
+
+La construction de l'arbre se fait à partir du tableau de \texttt{char*} où les mots de la commande ont été séparés à l'emplacement des espaces. Le tableau est analysé afin de trouver la racine de l'arbre. La racine est soit un \texttt{if} si ce mot est le premier mot de la commande, soit un \texttt{||} ou un \texttt{\&\&} si on retrouve un de ces identifiants à l'extérieur d'un \texttt{if}. Ensuite, on créé récursivement les deux autres commandes nécessaires s'il s'agit d'un \texttt{if}, \texttt{or} ou \texttt{and}. Lorsqu'une commande unique est detectée, la récursion de cette branche de l'arbre prend fin et le reste de la commande peut-être analysée.\newline
+
+L'évaluation de l'arbre de syntaxe n'est pas trop difficile. Chaque \texttt{Expression} possède sa propre façon d'être évaluée et ceci est représenté dans la fonction \texttt{eval(Expression* exp)}. Cette fonction retourne si l'expression exécutée a réussi ou non tout en suivant les règles des opérateurs logiques. Pour le \texttt{if}, on considère qu'une condition évalué à \texttt{false} implique que le \texttt{if} lui-même est évalué à \texttt{true} afin de respecter la sémantique des exemples fournis. Autrement, si la condition est évaluée à \texttt{true}, on exécute l'expression suivant le \texttt{do} et le \texttt{if} retourne cette même valeur. Encore une fois, la récursion arrête lorsque vient le temps d'évaluer une commande unique. Cette évaluation terminale retourne \texttt{true} ou \texttt{false} dépendemment de la valeur de la macro \texttt{WEXITSTATUS} appliquée sur le status de l'exécution d'un commande (ça se passe dans la fonction \texttt{run\_command(...)}).\newline
+
+Une gestion de la mémoire adéquate a été un soucis constant lors de la programmation de l'arbre de syntaxe. Effectivement, si une erreur se produit et que la mémoire allouée doit être libérée, il faut s'assurer de libérer l'arbre en entier sans que les noeuds perdent la référence vers leurs enfants. Afin de régler ce problème, pendant la construction de l'arbre de syntaxe, on vérifie à tout moment que les enfants ne sont pas \texttt{NULL}. Si tel est le cas, il faut libérer la mémoire de tous les enfants connus de ce noeuds, et ce de manière récursive afin de se rendre jusqu'aux feuilles de l'arbre. Ensuite, la valeur \texttt{NULL} est retournée afin que le parent exécute lui aussi cette libération sur ces autres enfants. Cette technique semble fonctionner parfaitement puisque l'arbre de syntaxe est libéré tel que prévu après que la ligne de commande ait été exécutée, ou si une erreur est détectée.\newline
+
+\section{Nota Bene}
+
+Finalement, puisqu'il semblerait qu'il faut mentionner cela: les opérateurs et décorateurs doivent être entourés d'un espace pour être correctement reconnus.
+
+De plus, nous ne supportons pas le `\texttt{;}` qui pourrait séparer différentes expressions.
 
 \end{document}
